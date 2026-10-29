@@ -198,9 +198,18 @@ function home(v) {
     <div class="hscroll" data-keep="pk">
       ${PACKAGES.map(pk => {
         const min = pk.prices.start[0];
-        const hourly = ZONES.find(z => z.id === 'ultra').price[0] * pk.hours;
-        const ultra = pk.prices.ultra[0];
-        return `<button class="pk-card" data-a="usePkg" data-pkg="${pk.id}"><span class="w">${pk.window}</span><span class="n">${pk.name.replace('Пакет на ', '')}</span><span class="p"><small>от</small>₾${min}</span><span class="save">500Hz: ₾${ultra} вместо ₾${hourly}</span></button>`;
+        // максимальная выгода против почасовой оплаты (будни)
+        const pct = Math.max(...ZONES.map(z => 1 - pk.prices[z.id][0] / (z.price[0] * pk.hours)));
+        const ic = { p3: 'clock', p5: 'zap', morning: 'sun', night: 'moon' }[pk.id];
+        const title = { p3: '3 часа', p5: '5 часов', morning: 'Утро', night: 'Ночь' }[pk.id];
+        const sub = { p3: 'Любые 3 часа с 08:00 до 19:00', p5: 'Пять часов подряд, в любое время', morning: 'С 08:00 до 13:00, 5 часов', night: 'С 23:00 до 09:00, 10 часов' }[pk.id];
+        return `<button class="pk-card pk-${pk.id}" data-a="usePkg" data-pkg="${pk.id}" aria-label="${pk.name}, от ₾${min}">
+          <span class="pk-top"><span class="pk-ic">${icon(ic, 18)}</span><span class="pk-save">до −${Math.round(pct * 100)}%</span></span>
+          <span class="pk-name">${title}</span>
+          <span class="pk-win">${sub}</span>
+          <span class="pk-price"><small>от</small>₾${min}<em>/ место</em></span>
+          <span class="pk-go">Выбрать${icon('chevron', 15)}</span>
+        </button>`;
       }).join('')}
     </div>
   </section>

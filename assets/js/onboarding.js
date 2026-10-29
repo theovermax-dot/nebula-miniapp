@@ -187,7 +187,7 @@ export function initOnboarding({ S, render, H, fsBtn }) {
   H.obFinish = () => {
     Object.assign(ob, { step: 'welcome', codeSent: false, token: null, link: null }); S.tab = 'home'; haptic.ok();
     render();
-    toast(`Готово, ${store.view.profile?.name || 'добро пожаловать'}! Вход запомнен`, 'ok');
+    toast(`Добро пожаловать, ${(store.view.profile?.name || '').split(' ')[0] || 'гость'}!`, 'ok');
   };
 
   // ---- аватар (и в онбординге, и в профиле) ----
