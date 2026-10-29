@@ -547,7 +547,7 @@ export function runAction(db, name, payload, ctx) {
 // Сообщения клиенту в чат бота
 const bkLine = b => `${b.seats.length > 1 ? 'Места' : 'Место'} ${b.seats.join(', ')} · ${[...new Set(b.seats.map(s => zoneOf(s).short || zoneOf(s).name))].join(', ')}\n${relDay(b.start)}, ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)}`;
 export function clientText(kind, b) {
-  if (kind === 'created') return `🎮 Бронь ${b.code} принята\n\n${bkLine(b)}\nК оплате в клубе: ₾${b.price}\n\nАдминистратор подтвердит бронь, ответ придёт сюда. За час до начала напомню.`;
+  if (kind === 'created') return `🎮 Бронь ${b.code} принята\n\n${bkLine(b)}\nК оплате в клубе: ₾${b.price}\n\nКод ${b.code} назовите на ресепшене. Администратор подтвердит бронь, ответ придёт сюда. За час до начала напомню.`;
   if (kind === 'remind') return `⏰ Скоро ваша бронь ${b.code}\n\n${bkLine(b)}\n\nМесто держим 15 минут после начала. Если планы изменились, отмените бронь в приложении.`;
   return '';
 }
