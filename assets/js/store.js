@@ -51,7 +51,18 @@ export const store = {
       const r = await fetch('/api/state', { headers: this.headers(), signal: ctrl.signal });
       clearTimeout(timer);
       const data = r.ok ? await r.json() : null;
-      if (data?.storage) { this.mode = 'remote'; this.view = data.view; if (data.bot) this.bot = data.bot; this.emit(); return; }
+      if (data?.storage) {
+        this.mode = 'remote'; this.view = data.view; if (data.bot) this.bot = data.bot;
+        // профиль из облака Telegram (регистрация до подключения базы) переносим на сервер
+        if (tgUser() && !this.view.profile) {
+          const c = await cloudGet(['nebula_profile']);
+          try {
+            const p = c.nebula_profile ? JSON.parse(c.nebula_profile) : null;
+            if (p?.phone && p?.name) await this.act('completeProfile', { name: p.name, phone: p.phone, consent: true, via: 'manual' });
+          } catch { /* покажем обычный вход */ }
+        }
+        this.emit(); return;
+      }
     } catch { /* нет сервера — демо */ }
     this.mode = 'local';
     await this.restoreFromCloud();
@@ -158,6 +169,7 @@ export const store = {
     if (data.result?.session) { this.session = data.result.session; ls.set(LS_SESSION, this.session); }
     if (action === 'deleteAccount') { this.session = ''; ls.del(LS_SESSION); }
     this.view = data.view; this.emit();
+    if (['completeProfile', 'updateProfile', 'deleteAccount'].includes(action)) this.syncCloud(action);
     return data.result;
   },
 
