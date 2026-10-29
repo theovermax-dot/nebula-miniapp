@@ -9,7 +9,7 @@ export async function sendReminders(db, url) {
   await saveDB(db); // сначала помечаем, чтобы параллельный вызов не задублировал
   const btn = { inline_keyboard: [[{ text: '🎮 Открыть бронь', web_app: { url } }]] };
   let sent = 0;
-  for (const b of due) { const r = await tg('sendMessage', { chat_id: b.uid.slice(3), text: clientText('remind', b), reply_markup: btn }); if (r?.ok) sent++; }
+  for (const b of due) { const r = await tg('sendMessage', { chat_id: b.uid.slice(3), text: clientText('remind', b), parse_mode: 'HTML', reply_markup: btn }); if (r?.ok) sent++; }
   return sent;
 }
 

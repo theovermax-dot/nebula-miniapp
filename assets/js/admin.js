@@ -1,8 +1,8 @@
 // Админ-панель: зал в реальном времени, брони, турниры, акции и рассылка.
-import * as C from './core.js?v=1793299953';
-import { store } from './store.js?v=1793299953';
-import { haptic } from './tg.js?v=1793299953';
-import { esc, $, icon, toast, sheet, confirmSheet, busy, money, closeAllSheets } from './ui.js?v=1793299953';
+import * as C from './core.js?v=1793300072';
+import { store } from './store.js?v=1793300072';
+import { haptic } from './tg.js?v=1793300072';
+import { esc, $, icon, toast, sheet, confirmSheet, busy, money, closeAllSheets } from './ui.js?v=1793300072';
 
 const { ZONES, ALL_SEATS, PACKAGES, fmtTime, fmtDay, relDay, pad, clubParts, dayStart } = C;
 
@@ -155,7 +155,7 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
     const revenue = v.bookings.filter(F.upcoming).reduce((a, b) => a + b.price, 0);
     return `<h1 class="h1">Брони</h1>
       <p class="sub">Впереди ${counts.upcoming} ${C.plural(counts.upcoming, 'бронь', 'брони', 'броней')} на ${money(revenue)}</p>
-      <label class="ab-search">${icon('search', 18)}<input id="abSearch" type="search" autocomplete="off" placeholder="Код брони, имя или телефон" value="${esc(A.q || '')}" aria-label="Поиск брони"></label>
+      <label class="ab-search">${icon('search', 18)}<input id="abSearch" type="search" autocomplete="off" placeholder="Код брони, имя или телефон" inputmode="search" value="${esc(A.q || '')}" aria-label="Поиск брони"></label>
       <div id="abFound">${A.q ? searchResults(v) : ''}</div>
       <div id="abMain" ${A.q ? 'hidden' : ''}>
       <div class="seg" role="tablist" data-keep="bf">
@@ -169,8 +169,8 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
   function searchResults(v) {
     const q = (A.q || '').trim().toLowerCase(), qc = q.replace(/^nb-?/, ''), qd = q.replace(/\D/g, '');
     const found = v.bookings.filter(b => b.code.toLowerCase().replace('nb-', '').includes(qc) || b.name.toLowerCase().includes(q) || (qd.length >= 3 && b.phone.replace(/\D/g, '').includes(qd)))
-      .sort((a, b) => Math.abs(a.start - v.now) - Math.abs(b.start - v.now)).slice(0, 20);
-    return found.length ? `<div class="ab-list" style="margin-top:14px">${found.map(b => bookingRow(b, v, true)).join('')}</div>` : `<div class="card empty" style="margin-top:14px"><b>Ничего не нашли</b>Проверьте код: он выглядит как NB-WDVE</div>`;
+      .sort((a, b) => (b.code === qc) - (a.code === qc) || Math.abs(a.start - v.now) - Math.abs(b.start - v.now)).slice(0, 20);
+    return found.length ? `<div class="ab-list" style="margin-top:14px">${found.map(b => bookingRow(b, v, true)).join('')}</div>` : `<div class="card empty" style="margin-top:14px"><b>Ничего не нашли</b>Код брони — 4 цифры, например 4827</div>`;
   }
   document.addEventListener('input', e => {
     if (e.target.id !== 'abSearch') return;

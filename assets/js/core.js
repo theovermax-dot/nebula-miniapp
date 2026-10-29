@@ -162,7 +162,12 @@ export function liveSeats(db, now = Date.now()) {
 
 // ---------- утилиты ----------
 const rid = (n = 8) => Array.from({ length: n }, () => 'abcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 31)]).join('');
-const code = () => 'NB-' + Array.from({ length: 4 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 30)]).join('');
+// код брони — 4 цифры, не повторяется среди действующих броней
+const code = db => {
+  const used = new Set((db?.bookings || []).filter(b => !['cancelled', 'done', 'noshow'].includes(b.status)).map(b => b.code));
+  for (let i = 0; i < 200; i++) { const c = String(1000 + Math.floor(Math.random() * 9000)); if (!used.has(c)) return c; }
+  return String(Date.now()).slice(-5);
+};
 const clean = (s, max = 120) => String(s ?? '').replace(/[<>]/g, '').trim().slice(0, max);
 export class UserError extends Error { constructor(msg) { super(msg); this.user = true; } }
 const fail = msg => { throw new UserError(msg); };
@@ -176,10 +181,12 @@ export function migrate(db) {
   for (const b of db.bookings || []) {
     if (!(Number(b.hours) > 0)) { b.hours = 2; const q = quote(b.seats, b.start, 2); b.price = q.price; b.pkg = q.pkg; fixed = true; }
   }
-  if (db.promoV === 5) return fixed;
+  if (db.promoV === 6) return fixed;
+  // коды броней NB-XXXX → 4 цифры
+  for (const b of db.bookings || []) if (String(b.code).startsWith('NB-')) b.code = code(db);
   // демо-акции убраны до подтверждения клубом; акции, созданные в админке, остаются
   db.promos = (db.promos || []).filter(p => !['pr-bday', 'pr-team', 'pr-morning'].includes(p.id));
-  db.promoV = 5;
+  db.promoV = 6;
   for (const t of db.tournaments || []) {
     const f = seedDB().tournaments.find(x => x.id === t.id);
     if (t.prizeHours == null) t.prizeHours = f?.prizeHours || 0;
@@ -193,12 +200,12 @@ export function seedDB(now = Date.now()) {
   const p = clubParts(now);
   const at = (dayOffset, h, m = 0) => today + dayOffset * 864e5 + (h * 60 + m) * 60e3;
   const nextWd = wd => { let i = 0; while (clubParts(today + i * 864e5).wd !== wd || i === 0) i++; return i; };
-  const db = { v: 1, promoV: 5, demo: true, seats: {}, bookings: [], tournaments: [], promos: [], subs: {}, broadcasts: [], users: {}, auth: {}, createdAt: now, updatedAt: now };
+  const db = { v: 1, promoV: 6, demo: true, seats: {}, bookings: [], tournaments: [], promos: [], subs: {}, broadcasts: [], users: {}, auth: {}, createdAt: now, updatedAt: now };
   demoTick(db, now, true);
   db.seats[9] = { status: 'repair', note: 'Замена блока питания' };
   const mk = (seats, start, hours, name, phone, status, user) => {
     const q = quote(seats, start, hours);
-    db.bookings.push({ id: rid(), code: code(), seats, start, hours, pkg: q.pkg, price: q.price, name, phone, tgUser: user || '', uid: 'seed', comment: '', status, createdAt: now - Math.random() * 864e5 });
+    db.bookings.push({ id: rid(), code: code(db), seats, start, hours, pkg: q.pkg, price: q.price, name, phone, tgUser: user || '', uid: 'seed', comment: '', status, createdAt: now - Math.random() * 864e5 });
   };
   const h = p.h + 1;
   mk([21, 22], at(0, Math.min(h + 2, 22)), 3, 'Георгий Беридзе', '+995 555 21 43 87', 'confirmed', 'giorgi_b');
@@ -307,7 +314,7 @@ export const actions = {
       ({ used: bonusUsed, off: bonusOff } = bonusDiscount(prof.bonusHours, seats, start, hours));
       prof.bonusHours -= bonusUsed;
     }
-    const b = { id: rid(), code: code(), seats, start, hours, pkg: q.pkg, price: q.price - bonusOff, hourly: q.hourly, bonusUsed, bonusOff, name, phone, verified: !!prof?.verified, tgUser: clean(ctx.username || prof?.tgUser, 40), uid: ctx.uid, comment: clean(p.comment, 200), promo: clean(p.promo, 60), status: 'new', createdAt: now };
+    const b = { id: rid(), code: code(db), seats, start, hours, pkg: q.pkg, price: q.price - bonusOff, hourly: q.hourly, bonusUsed, bonusOff, name, phone, verified: !!prof?.verified, tgUser: clean(ctx.username || prof?.tgUser, 40), uid: ctx.uid, comment: clean(p.comment, 200), promo: clean(p.promo, 60), status: 'new', createdAt: now };
     db.bookings.push(b);
     return { booking: b, notify: 'booking' };
   },
@@ -544,11 +551,14 @@ export function runAction(db, name, payload, ctx) {
   return res;
 }
 
-// Сообщения клиенту в чат бота
-const bkLine = b => `${b.seats.length > 1 ? 'Места' : 'Место'} ${b.seats.join(', ')} · ${[...new Set(b.seats.map(s => zoneOf(s).short || zoneOf(s).name))].join(', ')}\n${relDay(b.start)}, ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)}`;
+// Сообщения клиенту в чат бота (parse_mode: HTML)
+const seatLine = b => `🖥 ${b.seats.length > 1 ? 'Места' : 'Место'} ${b.seats.join(', ')} · ${[...new Set(b.seats.map(s => zoneOf(s).short || zoneOf(s).name))].join(', ')}`;
+const timeLine = b => `📅 ${relDay(b.start)} · ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)}`;
 export function clientText(kind, b) {
-  if (kind === 'created') return `🎮 Бронь ${b.code} принята\n\n${bkLine(b)}\nК оплате в клубе: ₾${b.price}\n\nКод ${b.code} назовите на ресепшене. Администратор подтвердит бронь, ответ придёт сюда. За час до начала напомню.`;
-  if (kind === 'remind') return `⏰ Скоро ваша бронь ${b.code}\n\n${bkLine(b)}\n\nМесто держим 15 минут после начала. Если планы изменились, отмените бронь в приложении.`;
+  if (kind === 'created') return `🎮 <b>Бронь принята!</b>\n\n${seatLine(b)}\n${timeLine(b)}\n💳 ₾${b.price}, оплата в клубе\n\n🔑 Код брони: <b>${b.code}</b>\nНазови его на ресепшене, и тебя сразу найдут.\n\nАдмин скоро подтвердит бронь, ответ придёт сюда. За час до игры напомню 😉`;
+  if (kind === 'remind') return `⏰ <b>Через час игра!</b>\n\n${seatLine(b)}\n${timeLine(b)}\n🔑 Код: <b>${b.code}</b>\n\nМесто держим 15 минут после начала. Если планы поменялись, отмени бронь в приложении, чтобы место досталось другим.`;
+  if (kind === 'confirmed') return `✅ <b>Бронь подтверждена</b>\n\n${seatLine(b)}\n${timeLine(b)}\n🔑 Код: <b>${b.code}</b>\n\nЖдём тебя в NEBULA!`;
+  if (kind === 'cancelled') return `❌ <b>Клуб отменил бронь ${b.code}</b>\n\n${seatLine(b)}\n${timeLine(b)}\n\nЕсли это ошибка, позвони нам: ${CLUB.phone}`;
   return '';
 }
 // Брони, о которых пора напомнить: начало через 75 минут или меньше, бронь сделана заранее

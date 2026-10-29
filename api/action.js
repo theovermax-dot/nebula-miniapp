@@ -36,13 +36,11 @@ export default async function handler(req, res) {
     }
     // клиенту — бронь в чат бота
     if (result.notify === 'booking' && result.booking?.uid?.startsWith('tg-')) {
-      await tg('sendMessage', { chat_id: result.booking.uid.slice(3), text: clientText('created', result.booking), reply_markup: openBtn(req) });
+      await tg('sendMessage', { chat_id: result.booking.uid.slice(3), text: clientText('created', result.booking), parse_mode: 'HTML', reply_markup: openBtn(req) });
     }
-    // клиенту — подтверждение статуса брони
-    if (result.notify === 'status' && result.booking?.uid?.startsWith('tg-')) {
-      const b = result.booking;
-      const words = { confirmed: '✅ Бронь подтверждена', cancelled: '❌ Бронь отменена клубом' }[b.status];
-      if (words) await tg('sendMessage', { chat_id: b.uid.slice(3), text: `${words}: ${b.code}, места ${b.seats.join(', ')}` });
+    // клиенту — подтверждение или отмена брони клубом
+    if (result.notify === 'status' && result.booking?.uid?.startsWith('tg-') && ['confirmed', 'cancelled'].includes(result.booking.status)) {
+      await tg('sendMessage', { chat_id: result.booking.uid.slice(3), text: clientText(result.booking.status, result.booking), parse_mode: 'HTML', reply_markup: openBtn(req) });
     }
     // победителю — сообщение о призе
     if (result.notify === 'winner' && result.reg?.uid?.startsWith('tg-')) {
