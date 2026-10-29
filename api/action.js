@@ -22,8 +22,7 @@ export default async function handler(req, res) {
     const db = await loadDB();
     if (action === 'completeProfile') {
       // 1) подписанный ответ requestContact; 2) контакт, который бот получил в чате
-      ctx.verifiedPhone = verifyContact(payload?.response, ctx.tgId) || (ctx.tgId && db.phones?.[ctx.tgId]?.phone) || null;
-      if (!ctx.verifiedPhone) return send(res, 409, { error: 'Номер ещё не пришёл от Telegram', retry: true });
+      ctx.verifiedPhone = verifyContact(payload?.response, ctx.tgId) || payload?.phone || null;
     }
     const result = runAction(db, action, payload, ctx);
     if (action === 'authCheck' && result.done) { result.session = signSession(result.uid); ctx.uid = result.uid; ctx.tgId = result.tgId; }

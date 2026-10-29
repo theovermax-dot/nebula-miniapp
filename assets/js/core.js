@@ -266,7 +266,7 @@ export const actions = {
     if (!(start > now - 15 * 60e3)) fail('Это время уже прошло — выберите другое');
     if (start > now + 14 * 864e5) fail('Бронь доступна на 14 дней вперёд');
     const prof = db.users?.[ctx.uid];
-    if (!prof?.verified && !ctx.isAdmin) fail('Сначала подтвердите номер телефона в профиле');
+    if (!prof?.phone && !ctx.isAdmin) fail('Укажите номер телефона в профиле');
     const name = clean(prof?.name || p.name, 60), phone = clean(prof?.phone || p.phone, 30);
     if (name.length < 2) fail('Как к вам обращаться?');
     if (phone.replace(/\D/g, '').length < 9) fail('Проверьте номер телефона');
@@ -321,13 +321,14 @@ export const actions = {
   // Номер уже проверен: на сервере — подписью Telegram, в демо — доверяем клиенту.
   completeProfile(db, p, ctx) {
     if (!ctx.uid) fail('Нет идентификатора пользователя');
-    if (!ctx.verifiedPhone) fail('Номер не подтверждён');
+    const phoneIn = ctx.verifiedPhone || p.phone;
+    if (String(phoneIn || '').replace(/\D/g, '').length < 9) fail('Укажите номер телефона');
     if (!p.consent) fail('Нужно согласие с политикой конфиденциальности');
     const name = clean(p.name, 60);
     if (name.length < 2) fail('Как к вам обращаться?');
     db.users = db.users || {};
     const prev = db.users[ctx.uid] || {};
-    db.users[ctx.uid] = { ...prev, name, phone: normPhone(ctx.verifiedPhone), verified: true, via: ctx.via || 'telegram', tgUser: clean(ctx.username, 40), createdAt: prev.createdAt || ctx.now || Date.now(), consentAt: ctx.now || Date.now() };
+    db.users[ctx.uid] = { ...prev, name, phone: normPhone(phoneIn), verified: true, via: ctx.via || 'manual', tgUser: clean(ctx.username, 40), createdAt: prev.createdAt || ctx.now || Date.now(), consentAt: ctx.now || Date.now() };
     return { profile: db.users[ctx.uid] };
   },
   updateProfile(db, p, ctx) {
@@ -336,6 +337,10 @@ export const actions = {
     const name = clean(p.name, 60);
     if (name.length < 2) fail('Имя слишком короткое');
     u.name = name;
+    if (p.phone !== undefined) {
+      if (String(p.phone).replace(/\D/g, '').length < 9) fail('Проверьте номер телефона');
+      u.phone = normPhone(p.phone);
+    }
     if ('hasAvatar' in p) u.hasAvatar = !!p.hasAvatar;
     return { profile: u };
   },
@@ -450,7 +455,8 @@ export const actions = {
   setDemo(db, p, ctx) { needAdmin(ctx); db.demo = !!p.on; return {}; },
 };
 export function normPhone(ph) {
-  const d = String(ph || '').replace(/[^\d]/g, '');
+  let d = String(ph || '').replace(/[^\d]/g, '');
+  if (d.length === 9 && d.startsWith('5')) d = '995' + d; // местный грузинский мобильный
   if (d.length === 12 && d.startsWith('995')) return `+995 ${d.slice(3, 6)} ${d.slice(6, 8)} ${d.slice(8, 10)} ${d.slice(10)}`;
   return d ? '+' + d : '';
 }

@@ -477,8 +477,10 @@ button.rowi:active, a.rowi:active { background: var(--surface-2); }
 }
 
 /* ---------- широкий экран: ноутбуки, компьютеры, полноэкранный режим Telegram Desktop ---------- */
-.fs-btn { margin-right: 2px; }
-.fs-btn:hover { background: var(--surface-2); color: var(--ink); }
+.fs-btn { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line-2); color: var(--ink); font-size: 13px; font-weight: 600; white-space: nowrap; transition: background .2s, border-color .2s; }
+.fs-btn .ic { color: var(--cyan); }
+.fs-btn:hover { background: var(--surface-2); border-color: var(--cyan); }
+@media (max-width: 520px) { .fs-btn span { display: none; } .fs-btn { width: 34px; padding: 0; justify-content: center; } }
 @media (min-width: 1000px) {
   body:not(.admin) main.screen { max-width: 1120px; padding-left: 32px; padding-right: 32px; }
   body:not(.admin) .topbar { padding-left: max(32px, calc((100vw - 1056px) / 2)); padding-right: max(32px, calc((100vw - 1056px) / 2)); }

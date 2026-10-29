@@ -33,7 +33,7 @@ export function avatarHTML(v, size = 56, cls = 'avatar') {
   return `<div class="${cls}" style="width:${size}px;height:${size}px">${src ? `<img src="${esc(src)}" alt="">` : `<span style="font-size:${Math.round(size * 0.4)}px">${esc(name.trim().slice(0, 1).toUpperCase())}</span>`}</div>`;
 }
 
-export function initOnboarding({ S, render, H }) {
+export function initOnboarding({ S, render, H, fsBtn }) {
   S.ob = S.ob || { step: 'welcome', name: '', consent: false };
   const ob = S.ob;
   const canContact = () => !!(tg?.requestContact && tg.isVersionAtLeast?.('6.9'));
@@ -42,7 +42,7 @@ export function initOnboarding({ S, render, H }) {
     const u = tgUser();
     if (!ob.name) ob.name = u ? [u.first_name, u.last_name].filter(Boolean).join(' ') : '';
     const free = Object.values(v.live).filter(x => x.status === 'free').length;
-    const dots = ['welcome', 'phone', 'avatar'].map(s => `<i class="${ob.step === s || (ob.step === 'wait' && s === 'phone') ? 'on' : ''}"></i>`).join('');
+    const dots = ['welcome', 'avatar'].map(s => `<i class="${ob.step === s ? 'on' : ''}"></i>`).join('');
     let body = '';
 
     if (ob.step === 'welcome') body = `
@@ -51,7 +51,8 @@ export function initOnboarding({ S, render, H }) {
       <div class="ob-live"><span class="dot"></span><b>${free}</b> из 22 ПК свободны прямо сейчас</div>
       <form id="obForm" novalidate>
         <label class="field"><span>Как к вам обращаться</span><input name="name" autocomplete="given-name" value="${esc(ob.name)}" placeholder="Имя или ник" maxlength="60"></label>
-        <label class="check"><input type="checkbox" name="consent" ${ob.consent ? 'checked' : ''}><span class="box">${icon('check', 14)}</span><span>Соглашаюсь с <a href="/privacy" data-a="privacy">политикой конфиденциальности</a> и обработкой номера телефона</span></label>
+        <label class="field"><span>Телефон</span><div class="with-btn"><input name="phone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(ob.phone || '')}" placeholder="+995 5__ __ __ __" maxlength="24">${canContact() ? `<button type="button" class="btn btn-ghost btn-sm" data-a="obContact" style="height:52px">Из Telegram</button>` : ''}</div><small>Чтобы администратор мог связаться по брони</small></label>
+        <label class="check"><input type="checkbox" name="consent" ${ob.consent ? 'checked' : ''}><span class="box">${icon('check', 14)}</span><span>Соглашаюсь с <a href="/privacy" data-a="privacy">политикой конфиденциальности</a></span></label>
         <button class="btn" type="submit" data-a="obNext">Продолжить</button>
       </form>`;
 
@@ -94,7 +95,7 @@ export function initOnboarding({ S, render, H }) {
       </div>`;
 
     return `<div class="ob">
-      <div class="ob-top"><div class="wordmark"><b>NEBUL<i>A</i></b><small>GAMING</small></div><div class="ob-dots" aria-hidden="true">${dots}</div></div>
+      <div class="ob-top"><div class="wordmark"><b>NEBUL<i>A</i></b><small>GAMING</small></div><div style="display:flex;align-items:center;gap:10px">${fsBtn ? fsBtn() : ''}<div class="ob-dots" aria-hidden="true">${dots}</div></div></div>
       <div class="ob-body">${body}</div>
       <button class="ob-staff" data-a="adminLogin">Для персонала</button>
     </div>`;
@@ -115,33 +116,28 @@ export function initOnboarding({ S, render, H }) {
 
   H.privacy = (el, e) => { e?.preventDefault(); sheet({ title: 'Политика конфиденциальности', full: true, body: `<article class="policy">${PRIVACY_HTML}</article>` }); };
 
-  H.obNext = (el, e) => {
+  H.obNext = async (el, e) => {
     e?.preventDefault();
     const f = $('#obForm');
-    ob.name = f.name.value.trim(); ob.consent = f.consent.checked;
+    ob.name = f.name.value.trim(); ob.phone = f.phone.value.trim(); ob.consent = f.consent.checked;
     if (ob.name.length < 2) { f.name.focus(); return toast('Напишите, как к вам обращаться', 'err'); }
+    if (ob.phone.replace(/\D/g, '').length < 9) { f.phone.focus(); return toast('Укажите номер телефона', 'err'); }
     if (!ob.consent) return toast('Отметьте согласие с политикой', 'err');
-    haptic.light(); ob.step = 'phone'; render();
+    await busy(el, async () => {
+      try { await store.act('completeProfile', { name: ob.name, phone: ob.phone, consent: true, via: 'manual' }); done(); }
+      catch (err) { toast(err.message, 'err'); }
+    });
   };
   H.obBack = () => { stopPoll(); ob.step = ob.step === 'wait' ? 'phone' : 'welcome'; ob.codeSent = false; render(); };
 
-  // ---- внутри Telegram: нативное «Поделиться номером» ----
-  H.obContact = el => {
-    tg.requestContact(async (shared, res) => {
-      if (!shared) { haptic.warn(); return toast('Без номера бронь недоступна — можно поделиться позже'); }
-      await busy(el, async () => {
-        const phone = res?.responseUnsafe?.contact?.phone_number;
-        for (let i = 0; i < 6; i++) {
-          try {
-            await store.act('completeProfile', { name: ob.name, consent: true, response: res?.response, phone, via: 'telegram' });
-            return done();
-          } catch (err) {
-            if (!err.retry) return toast(err.message, 'err');
-            await sleep(1200); // ждём, пока бот получит контакт
-          }
-        }
-        toast('Telegram не прислал номер. Попробуйте ещё раз', 'err');
-      });
+  // ---- в Telegram: подставить номер одной кнопкой (необязательно) ----
+  H.obContact = () => {
+    const f = $('#obForm');
+    if (f) { ob.name = f.name.value; ob.consent = f.consent.checked; }
+    tg.requestContact((shared, res) => {
+      const ph = res?.responseUnsafe?.contact?.phone_number;
+      if (shared && ph) { ob.phone = (ph.startsWith('+') ? '' : '+') + ph; const inp = $('#obForm [name=phone]'); if (inp) inp.value = ob.phone; haptic.ok(); }
+      else if (!shared) toast('Можно ввести номер вручную');
     });
   };
 

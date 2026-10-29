@@ -91,18 +91,20 @@ function renderTabs(v) {
 
 // ---------- полный экран (Telegram Desktop / macOS / браузер) ----------
 const TG_DESKTOP = ['tdesktop', 'macos', 'weba', 'webk', 'web', 'unigram'];
-const fsTg = () => !!(tg?.requestFullscreen && tg.isVersionAtLeast?.('8.0') && TG_DESKTOP.includes(tg.platform));
+const fsTgOk = () => !!(tg?.requestFullscreen && tg.isVersionAtLeast?.('8.0'));
+const fsTg = () => !!tg && (TG_DESKTOP.includes(tg.platform) || (fsTgOk() && matchMedia('(min-width: 700px)').matches));
 const fsWeb = () => !tg && !!document.fullscreenEnabled && matchMedia('(min-width: 900px) and (pointer: fine)').matches;
 const isFs = () => tg ? !!tg.isFullscreen : !!document.fullscreenElement;
 function fsBtn() {
   if (!fsTg() && !fsWeb()) return '';
   const on = isFs();
-  return `<button class="icon-btn fs-btn" data-a="fsToggle" aria-label="${on ? 'Выйти из полноэкранного режима' : 'Во весь экран'}" title="${on ? 'Свернуть' : 'Во весь экран'}">${icon(on ? 'minimize' : 'maximize', 20)}</button>`;
+  return `<button class="fs-btn" data-a="fsToggle" aria-label="${on ? 'Выйти из полноэкранного режима' : 'Во весь экран'}" title="${on ? 'Свернуть' : 'Во весь экран'}">${icon(on ? 'minimize' : 'maximize', 18)}<span>${on ? 'Свернуть' : 'Во весь экран'}</span></button>`;
 }
 H.fsToggle = async () => {
   haptic.tap();
   const want = !isFs();
   LS.set('nebula:fs', want ? '1' : '0');
+  if (tg && !fsTgOk()) return toast('Обновите Telegram Desktop до последней версии — тогда приложение развернётся на весь экран', 'err');
   try {
     if (tg) want ? tg.requestFullscreen() : tg.exitFullscreen();
     else want ? await document.documentElement.requestFullscreen() : await document.exitFullscreen();
@@ -112,7 +114,7 @@ function initFullscreen() {
   if (tg) {
     tg.onEvent?.('fullscreenChanged', () => { document.documentElement.classList.toggle('is-fs', !!tg.isFullscreen); render(); });
     tg.onEvent?.('fullscreenFailed', e => { if (e?.error !== 'ALREADY_FULLSCREEN') toast('Полноэкранный режим недоступен в этой версии Telegram', 'err'); });
-    if (fsTg() && LS.get('nebula:fs') === '1') { try { tg.requestFullscreen(); } catch { /* */ } }
+    if (fsTg() && fsTgOk() && LS.get('nebula:fs') === '1') { try { tg.requestFullscreen(); } catch { /* */ } }
   }
   document.addEventListener('fullscreenchange', () => { document.documentElement.classList.toggle('is-fs', !!document.fullscreenElement); render(); });
 }
@@ -386,7 +388,7 @@ H.bkNext = () => {
         <div class="li total"><span>Итого</span><span>${q.saving > 0 ? `<s>${money(q.hourly)}</s>` : ''}${money(q.price)}</span></div>
       </div>
       <form id="bkForm" novalidate>
-        <div class="who">${avatarHTML(v, 44)}<div class="grow"><b>${esc(v.profile?.name || name)}</b><span><span class="verified">${icon('check', 12)}</span>${esc(v.profile?.phone || phone)}</span></div></div>
+        <div class="who">${avatarHTML(v, 44)}<div class="grow"><b>${esc(v.profile?.name || name)}</b><span>${esc(v.profile?.phone || phone)}</span></div></div>
         <label class="field"><span>Комментарий <span class="dim" style="font-weight:500">— необязательно</span></span><input name="comment" placeholder="Например: придём вдвоём, нужен геймпад"></label>
         <p class="pay-note">${icon('clock', 16)}<span>Оплата в клубе. Место держим 15 минут после начала брони.</span></p>
         <button class="btn" type="submit" data-a="bkSubmit">Забронировать · ${money(q.price)}</button>
@@ -567,7 +569,7 @@ function me(v) {
   const p = v.profile;
   return `<div class="me">
       <button class="ava-btn" data-a="avaSheet" aria-label="Изменить фото">${avatarHTML(v, 64)}<span class="ava-cam">${icon('edit', 13)}</span></button>
-      <div style="min-width:0"><h1>${esc(p?.name || name)}</h1><p>${p?.phone ? `<span class="verified">${icon('check', 13)}</span>${esc(p.phone)}` : (u?.username ? '@' + esc(u.username) : 'Гость NEBULA')}</p></div>
+      <div style="min-width:0"><h1>${esc(p?.name || name)}</h1><p>${p?.phone ? esc(p.phone) : (u?.username ? '@' + esc(u.username) : 'Гость NEBULA')}</p></div>
     </div>
     <section class="sec" style="margin-top:24px">
       <div class="sec-head"><h2 class="h2">Мои брони</h2></div>
@@ -588,7 +590,7 @@ function me(v) {
       <div class="rows">
         <button class="rowi" data-a="editName"><span class="grow"><span class="t">Имя</span><span class="s">${esc(p?.name || '')}</span></span>${icon('edit', 18)}</button>
         <button class="rowi" data-a="avaSheet"><span class="grow"><span class="t">Фото профиля</span><span class="s">${v.avatar ? 'Загружено' : 'Не выбрано'}</span></span>${icon('chevron', 18)}</button>
-        <div class="rowi"><span class="grow"><span class="t">Телефон</span><span class="s">${esc(p?.phone || '—')} · подтверждён через ${p?.via === 'demo' ? 'демо-код' : 'Telegram'}</span></span><span class="verified lg">${icon('check', 14)}</span></div>
+        <button class="rowi" data-a="editName"><span class="grow"><span class="t">Телефон</span><span class="s">${esc(p?.phone || '—')}</span></span>${icon('edit', 18)}</button>
         <button class="rowi" data-a="privacy"><span class="grow"><span class="t">Политика конфиденциальности</span></span>${icon('chevron', 18)}</button>
         ${!tg ? `<button class="rowi" data-a="logoutUser"><span class="grow"><span class="t">Выйти из аккаунта</span><span class="s">На этом устройстве</span></span>${icon('logout', 18)}</button>` : ''}
         <button class="rowi" data-a="deleteAccount"><span class="grow"><span class="t red">Удалить аккаунт</span><span class="s">Профиль, фото и подписка удалятся</span></span></button>
@@ -609,19 +611,19 @@ function bookingCard(b) {
 }
 H.editName = () => {
   const s = sheet({
-    title: 'Как к вам обращаться',
-    body: `<form id="nameForm" novalidate><label class="field"><span class="sr">Имя</span><input name="name" maxlength="60" value="${esc(store.view.profile?.name || '')}"></label><button class="btn" type="submit" data-a="saveName">Сохранить</button></form>`,
+    title: 'Ваши данные',
+    body: `<form id="nameForm" novalidate><label class="field"><span>Имя</span><input name="name" maxlength="60" value="${esc(store.view.profile?.name || '')}"></label><label class="field"><span>Телефон</span><input name="phone" type="tel" inputmode="tel" maxlength="24" value="${esc(store.view.profile?.phone || '')}"></label><button class="btn" type="submit" data-a="saveName">Сохранить</button></form>`,
   });
   setTimeout(() => s.body.querySelector('input')?.focus(), 400);
 };
 H.saveName = async (el, e) => {
   e?.preventDefault();
   await busy(el, async () => {
-    try { await store.act('updateProfile', { name: $('#nameForm [name=name]').value }); closeAllSheets(); toast('Сохранено', 'ok'); } catch (err) { toast(err.message, 'err'); }
+    try { await store.act('updateProfile', { name: $('#nameForm [name=name]').value, phone: $('#nameForm [name=phone]').value }); closeAllSheets(); toast('Сохранено', 'ok'); } catch (err) { toast(err.message, 'err'); }
   });
 };
 H.logoutUser = async () => {
-  if (!(await confirmSheet({ title: 'Выйти из аккаунта?', text: 'Чтобы снова бронировать, нужно будет подтвердить номер.', ok: 'Выйти' }))) return;
+  if (!(await confirmSheet({ title: 'Выйти из аккаунта?', text: 'Чтобы снова бронировать, нужно будет ввести имя и телефон.', ok: 'Выйти' }))) return;
   store.logoutUser();
 };
 H.deleteAccount = async () => {
@@ -679,7 +681,7 @@ async function boot() {
   initTelegram();
   shell();
   adminApi = initAdmin({ S, render, liveState, STATUS, zoneLabel });
-  obApi = initOnboarding({ S, render, H });
+  obApi = initOnboarding({ S, render, H, fsBtn });
   store.on(() => render());
   initFullscreen();
   await store.init();
