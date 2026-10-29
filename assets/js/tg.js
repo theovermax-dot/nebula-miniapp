@@ -44,3 +44,19 @@ export function requestWrite() {
     try { tg.requestWriteAccess(ok => res(ok)); } catch { res(true); }
   });
 }
+
+// Облачное хранилище Telegram: данные привязаны к аккаунту и видны на всех устройствах.
+const cloud = () => (tg?.CloudStorage && tg.isVersionAtLeast?.('6.9') ? tg.CloudStorage : null);
+export const cloudGet = keys => new Promise(res => {
+  const c = cloud(); if (!c) return res({});
+  try { c.getItems(keys, (err, vals) => res(err ? {} : (vals || {}))); } catch { res({}); }
+  setTimeout(() => res({}), 2500);
+});
+export const cloudSet = (key, val) => new Promise(res => {
+  const c = cloud(); if (!c) return res(false);
+  try { c.setItem(key, val, err => res(!err)); } catch { res(false); }
+});
+export const cloudRemove = keys => new Promise(res => {
+  const c = cloud(); if (!c) return res(false);
+  try { c.removeItems(keys, err => res(!err)); } catch { res(false); }
+});

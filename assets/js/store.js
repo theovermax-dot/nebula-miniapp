@@ -1,6 +1,6 @@
 // Слой данных: сервер (Vercel + Redis), если он подключён, иначе демо-режим в браузере.
 import { seedDB, publicView, runAction, demoTick } from './core.js';
-import { tg, tgUser } from './tg.js';
+import { tg, tgUser, cloudGet, cloudSet, cloudRemove } from './tg.js';
 
 const LS_DB = 'nebula:db:v1';
 const LS_UID = 'nebula:uid';
@@ -54,7 +54,36 @@ export const store = {
       if (data?.storage) { this.mode = 'remote'; this.view = data.view; if (data.bot) this.bot = data.bot; this.emit(); return; }
     } catch { /* нет сервера — демо */ }
     this.mode = 'local';
+    await this.restoreFromCloud();
     this.refreshLocal();
+    // профиль, созданный до синхронизации, отправляем в облако, чтобы он появился на других устройствах
+    if (tgUser() && this.view?.profile) this.syncCloud('setAvatar');
+  },
+
+  // Профиль в Telegram CloudStorage — вход сохраняется между телефоном и компьютером
+  async restoreFromCloud() {
+    if (!tgUser()) return;
+    const db = this.loadLocal();
+    const uid = this.uid;
+    if (db.users?.[uid]?.phone && ls.get(LS_AVATAR)) return;
+    const c = await cloudGet(['nebula_profile', 'nebula_avatar']);
+    try {
+      const p = c.nebula_profile ? JSON.parse(c.nebula_profile) : null;
+      if (p?.phone && !db.users?.[uid]?.phone) { db.users = db.users || {}; db.users[uid] = { ...p, verified: true }; this.saveLocal(db); }
+    } catch { /* повреждённые данные — игнорируем */ }
+    if (c.nebula_avatar && !ls.get(LS_AVATAR)) ls.set(LS_AVATAR, c.nebula_avatar);
+  },
+  async syncCloud(action) {
+    if (!tgUser()) return;
+    if (action === 'deleteAccount') return cloudRemove(['nebula_profile', 'nebula_avatar']);
+    const p = this.view?.profile;
+    if (p) await cloudSet('nebula_profile', JSON.stringify({ name: p.name, phone: p.phone, via: p.via, createdAt: p.createdAt, consentAt: p.consentAt }));
+    if (action === 'setAvatar') {
+      const a = ls.get(LS_AVATAR) || this.view?.avatar;
+      if (!a) return cloudRemove(['nebula_avatar']);
+      const small = await shrink(a);
+      if (small && small.length < 4000) await cloudSet('nebula_avatar', small); else await cloudRemove(['nebula_avatar']);
+    }
   },
 
   // ---- локальный режим ----
@@ -100,7 +129,7 @@ export const store = {
         if (action === 'setAvatar') {
           if (payload.data) ls.set(LS_AVATAR, payload.data); else ls.del(LS_AVATAR);
           if (db.users?.[ctx.uid]) db.users[ctx.uid].hasAvatar = !!payload.data;
-          this.saveLocal(db); this.refreshLocal(); return {};
+          this.saveLocal(db); this.refreshLocal(); this.syncCloud(action); return {};
         }
         // демо без сервера: номер из Telegram или введённый вручную принимаем как подтверждённый
         if (action === 'completeProfile') { ctx.verifiedPhone = payload.phone; ctx.via = payload.via || 'demo'; }
@@ -110,6 +139,7 @@ export const store = {
         this.saveLocal(db);
         this.view = publicView(db, { ...this.ctx(), avatar: ls.get(LS_AVATAR) });
         this.emit();
+        if (['completeProfile', 'updateProfile', 'deleteAccount'].includes(action)) this.syncCloud(action);
         return result;
       } catch (e) {
         this.memDb = JSON.parse(snapshot);
@@ -142,3 +172,20 @@ export const store = {
   logout() { this.pin = ''; ls.del(LS_PIN); this.refresh(); },
   resetDemo() { ls.del(LS_DB); this.memDb = null; this.refreshLocal(); },
 };
+
+// маленькая копия аватара (64×64) влезает в лимит CloudStorage 4 КБ
+function shrink(src) {
+  return new Promise(res => {
+    if (/^https:/.test(src)) return res(src);
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      c.getContext('2d').drawImage(img, 0, 0, 64, 64);
+      let out = c.toDataURL('image/jpeg', 0.7);
+      if (out.length >= 4000) out = c.toDataURL('image/jpeg', 0.45);
+      res(out);
+    };
+    img.onerror = () => res(null);
+    img.src = src;
+  });
+}
