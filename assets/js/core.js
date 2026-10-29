@@ -114,6 +114,14 @@ export function quote(seats, start, hours) {
   return { hourly, price, saving: hourly - price, pkg, weekend: isWeekend(start) };
 }
 
+// Бонусные часы: списываются с первого места по его фактической цене за час (с учётом пакета)
+export function bonusDiscount(bonusHours, seats, start, hours) {
+  const used = Math.min(bonusHours || 0, hours);
+  if (!used || !seats.length) return { used: 0, off: 0 };
+  const seatPrice = quoteSeat(zoneOf(seats[0]).id, start, hours).price;
+  return { used, off: Math.min(seatPrice, Math.round(seatPrice / hours * used)) };
+}
+
 // ---------- занятость ----------
 const ACTIVE = new Set(['new', 'confirmed', 'arrived']);
 export function intervals(db, now = Date.now()) {
@@ -303,8 +311,7 @@ export const actions = {
     // бонусные часы (например, приз за турнир): списываем по обычному тарифу первого места
     let bonusUsed = 0, bonusOff = 0;
     if (p.useBonus && prof?.bonusHours > 0) {
-      bonusUsed = Math.min(prof.bonusHours, hours);
-      bonusOff = Math.min(q.price, bonusUsed * zoneOf(seats[0]).price[isWeekend(start) ? 1 : 0]);
+      ({ used: bonusUsed, off: bonusOff } = bonusDiscount(prof.bonusHours, seats, start, hours));
       prof.bonusHours -= bonusUsed;
     }
     const b = { id: rid(), code: code(), seats, start, hours, pkg: q.pkg, price: q.price - bonusOff, hourly: q.hourly, bonusUsed, bonusOff, name, phone, verified: !!prof?.verified, tgUser: clean(ctx.username || prof?.tgUser, 40), uid: ctx.uid, comment: clean(p.comment, 200), promo: clean(p.promo, 60), status: 'new', createdAt: now };

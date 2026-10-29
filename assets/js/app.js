@@ -447,7 +447,7 @@ H.bkNext = () => {
         <input type="hidden" name="promo" value="${esc(st.promo)}"><input type="hidden" name="useBonus" value="${st.bonus ? '1' : ''}">
         ${(() => {
           const bh = v.profile?.bonusHours || 0; if (!bh) return '';
-          const use = Math.min(bh, S.bk.hours), off = Math.min(q.price, use * C.zoneOf(seats[0]).price[C.isWeekend(bkStart()) ? 1 : 0]);
+          const { used: use, off } = C.bonusDiscount(bh, seats, bkStart(), S.bk.hours);
           st.off = st.bonus ? off : 0;
           return `<button type="button" class="bonus-opt ${st.bonus ? 'on' : ''}" data-bonus role="switch" aria-checked="${st.bonus}"><span class="grow"><b>Списать бонусные часы</b><span>${use} из ${bh} ч · −${money(off)}</span></span><span class="switch ${st.bonus ? 'on' : ''}"></span></button>`;
         })()}
