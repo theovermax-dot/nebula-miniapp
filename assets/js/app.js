@@ -549,11 +549,11 @@ function promos(v) {
             const [a, b] = pk.prices[z.id];
             const save = z.price[0] * pk.hours - a;
             return `<tr><td><span class="pn">${pk.name.replace('Пакет на ', '')}</span><span class="pw">${pk.window}</span></td>
-              <td><span class="pv">₾${a}</span>${save > 0 ? `<span class="ps">−₾${save}</span>` : ''}</td><td class="pv2">₾${b}</td></tr>`;
+              <td><span class="pv">₾${a}</span>${save > 0 ? `<span class="ps">вместо <s>₾${z.price[0] * pk.hours}</s></span>` : ''}</td><td class="pv2">₾${b}</td></tr>`;
           }).join('')}</tbody>
         </table>
       </div>
-      <p class="dim" style="font-size:13px;margin:12px 2px 16px">Почасово ${z.name}: ₾${z.price[0]} / ₾${z.price[1]}. Пакет применяется сам, когда время брони подходит.</p>
+      <p class="dim" style="font-size:13px;margin:12px 2px 16px">«Вместо» — сколько стоили бы те же часы по обычному тарифу ${z.name}: ₾${z.price[0]} / ₾${z.price[1]} в час. Пакет применяется сам, если время брони подходит.</p>
       <button class="btn" data-a="go" data-tab="book">Забронировать</button>
     </section>
     ${footer()}`;

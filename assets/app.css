@@ -251,7 +251,8 @@ button.rowi:active, a.rowi:active { background: var(--surface-2); }
 .ptable .pw { font-family: var(--f-mono); font-size: 12px; color: var(--ink-3); }
 .ptable .pv { font: 600 20px var(--f-fig); color: var(--cyan); letter-spacing: -0.02em; }
 .ptable .pv2 { font: 500 15px var(--f-fig); color: var(--ink-2); padding-left: 14px; }
-.ptable .ps { display: block; font-size: 11.5px; color: var(--green); margin-top: 2px; }
+.ptable .ps { display: block; font-size: 12px; color: var(--ink-3); margin-top: 3px; white-space: nowrap; }
+.ptable .ps s { color: var(--ink-3); text-decoration-color: var(--red); }
 
 .promo { display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; align-items: start; }
 .promo .badge-lg { font: 600 15px/1 var(--f-fig); color: var(--cyan); white-space: nowrap; padding-top: 3px; }
@@ -418,12 +419,12 @@ button.rowi:active, a.rowi:active { background: var(--surface-2); }
 
 /* ---------- тост ---------- */
 .toast {
-  position: fixed; z-index: 200; left: 50%; top: calc(var(--safe-top) + 14px); transform: translate(-50%, -140%);
+  position: fixed; z-index: 200; left: 50%; top: calc(var(--safe-top) + 14px); transform: translate(-50%, calc(-100% - var(--safe-top) - 40px)); opacity: 0; visibility: hidden; pointer-events: none;
   width: max-content; max-width: calc(100vw - 32px); display: flex; white-space: nowrap; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 14px;
   background: var(--surface-3); border: 1px solid var(--line-2); color: var(--ink); font-size: 14px; font-weight: 500;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, .45); transition: transform .45s var(--ease);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .45); transition: transform .45s var(--ease), opacity .3s, visibility 0s .45s;
 }
-.toast.show { transform: translate(-50%, 0); }
+.toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; pointer-events: auto; transition: transform .45s var(--ease), opacity .2s, visibility 0s; }
 .toast.ok .ic { color: var(--green); } .toast.err .ic { color: var(--red); } .toast.info .ic { color: var(--cyan); }
 
 /* ---------- админ ---------- */
