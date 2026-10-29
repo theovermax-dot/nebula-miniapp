@@ -600,7 +600,7 @@ function promos(v) {
       ${v.promos.map(p => `<article class="card promo"><h3 class="h3">${esc(p.title)}</h3>${p.badge ? `<span class="badge-lg">${esc(p.badge)}</span>` : '<span></span>'}<p>${esc(p.text)}</p></article>`).join('')}
     </section>` : ''}
 
-    <section class="sec">
+    <section class="sec"${v.promos.length ? '' : ' style="margin-top:28px"'}>
       <h2 class="h2" style="margin-bottom:14px">Пакетные цены</h2>
       <div class="seg" role="tablist" data-keep="pz">${C.HZ_ROWS.map(([id, label]) => `<button role="tab" class="${S.promoZone === id ? 'on' : ''}" data-a="pz" data-zone="${id}" aria-selected="${S.promoZone === id}">${label.replace('Duo 500Hz', 'Duo').replace('Hz', '')}</button>`).join('')}</div>
       <div class="card" style="margin-top:12px;padding:14px 18px 6px">

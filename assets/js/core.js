@@ -176,13 +176,10 @@ export function migrate(db) {
   for (const b of db.bookings || []) {
     if (!(Number(b.hours) > 0)) { b.hours = 2; const q = quote(b.seats, b.start, 2); b.price = q.price; b.pkg = q.pkg; fixed = true; }
   }
-  if (db.promoV === 4) return fixed;
-  const fresh = seedDB().promos;
-  for (const p of db.promos || []) {
-    const f = fresh.find(x => x.id === p.id);
-    if (f) Object.assign(p, { title: f.title, text: f.text, badge: f.badge });
-  }
-  db.promoV = 4;
+  if (db.promoV === 5) return fixed;
+  // демо-акции убраны до подтверждения клубом; акции, созданные в админке, остаются
+  db.promos = (db.promos || []).filter(p => !['pr-bday', 'pr-team', 'pr-morning'].includes(p.id));
+  db.promoV = 5;
   for (const t of db.tournaments || []) {
     const f = seedDB().tournaments.find(x => x.id === t.id);
     if (t.prizeHours == null) t.prizeHours = f?.prizeHours || 0;
@@ -196,7 +193,7 @@ export function seedDB(now = Date.now()) {
   const p = clubParts(now);
   const at = (dayOffset, h, m = 0) => today + dayOffset * 864e5 + (h * 60 + m) * 60e3;
   const nextWd = wd => { let i = 0; while (clubParts(today + i * 864e5).wd !== wd || i === 0) i++; return i; };
-  const db = { v: 1, promoV: 4, demo: true, seats: {}, bookings: [], tournaments: [], promos: [], subs: {}, broadcasts: [], users: {}, auth: {}, createdAt: now, updatedAt: now };
+  const db = { v: 1, promoV: 5, demo: true, seats: {}, bookings: [], tournaments: [], promos: [], subs: {}, broadcasts: [], users: {}, auth: {}, createdAt: now, updatedAt: now };
   demoTick(db, now, true);
   db.seats[9] = { status: 'repair', note: 'Замена блока питания' };
   const mk = (seats, start, hours, name, phone, status, user) => {
@@ -224,11 +221,7 @@ export function seedDB(now = Date.now()) {
       about: 'Ultimate-составы запрещены, только клубы. Матчи по 6 минут, ничья — пенальти. Свой геймпад можно принести.',
       regs: ['Гела', 'Nodar10', 'Misha FC', 'Saba', 'Giorgi D.', 'Темур', 'kakha', 'Levan', 'Mate', 'Vako', 'Otar', 'Beka'].map((t, i) => ({ id: rid(), team: t, captain: '', players: [], contact: '', uid: 'seed', createdAt: now - i * 18e5 })) },
   ];
-  db.promos = [
-    { id: 'pr-bday', title: 'День рождения', text: 'Дарим 2 часа к любой брони от 3 часов. Действует неделю до и после дня рождения — возьмите с собой документ.', badge: '+2 часа', active: true, createdAt: now },
-    { id: 'pr-team', title: 'Команда из 5', text: 'Бронируете всю зону на пятерых — шестой час всей команде бесплатно.', badge: '+1 час', active: true, createdAt: now },
-    { id: 'pr-morning', title: 'Утро на 500 Гц', text: 'С 08:00 до 13:00 на станциях 500 Гц: 5 часов за ₾24 вместо ₾50.', badge: '−52%', active: true, createdAt: now },
-  ];
+  db.promos = []; // акции клуба пока не утверждены — добавляются в админке
   for (let i = 1; i <= 47; i++) db.subs['seed-' + i] = { name: '', at: now - i * 864e5 / 3, demo: true };
   return db;
 }
