@@ -1,0 +1,11 @@
+{
+  "name": "nebula-miniapp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Telegram Mini App игрового клуба NEBULA Gaming (Батуми): бронь ПК, турниры, акции, админ-панель",
+  "scripts": {
+    "dev": "npx vercel dev"
+  },
+  "engines": { "node": ">=18" }
+}

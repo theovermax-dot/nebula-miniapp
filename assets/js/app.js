@@ -1,0 +1,618 @@
+import * as C from './core.js';
+import { store } from './store.js';
+import { tg, tgUser, initTelegram, haptic, setBack, openLink, requestWrite } from './tg.js';
+import { esc, $, $$, icon, toast, sheet, confirmSheet, countUp, busy, money, closeAllSheets, topSheet } from './ui.js';
+import { initAdmin } from './admin.js';
+
+const { ZONES, PACKAGES, ALL_SEATS, CLUB, fmtTime, fmtDay, relDay, pad, clubParts, dayStart } = C;
+const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* */ } } };
+
+// ---------- состояние интерфейса ----------
+const S = {
+  tab: 'home',
+  admin: false,
+  adminTab: 'hall',
+  prevTab: null,
+  promoZone: 'ultra',
+  bk: null,
+};
+const H = {}; // обработчики data-a
+
+function nextSlotMin(now = Date.now()) {
+  const p = clubParts(now);
+  return Math.ceil((p.h * 60 + p.min + 10) / 30) * 30;
+}
+function initBk() {
+  const now = Date.now();
+  let day = dayStart(now), startMin = nextSlotMin(now);
+  if (startMin > 23 * 60 + 30) { day += 864e5; startMin = 12 * 60; }
+  S.bk = { day, startMin, hours: 2, seats: new Set() };
+}
+initBk();
+const bkStart = () => S.bk.day + S.bk.startMin * 60e3;
+const bkEnd = () => bkStart() + S.bk.hours * 3600e3;
+const isToday = t => dayStart(t) === dayStart(Date.now());
+const minSlotFor = day => isToday(day) ? nextSlotMin() : 0;
+const zoneLabel = z => z.short || z.name;
+
+// ---------- статусы мест ----------
+function seatInWindow(v, seat) {
+  const start = bkStart(), end = bkEnd();
+  const c = C.seatConflict(v.occupied, seat, start, end);
+  if (!c) return { cls: 'free', text: 'Свободен', ok: true };
+  if (c.kind === 'repair') return { cls: 'repair', text: 'На ремонте' };
+  if (c.kind === 'session' || c.start <= start) return { cls: 'busy', text: `до <span class="mono">${fmtTime(c.end)}</span>` };
+  return { cls: 'booked', text: `Бронь <span class="mono">${fmtTime(c.start)}</span>` };
+}
+export function liveState(v, seat) {
+  const l = v.live[seat];
+  if (l.status === 'repair') return { cls: 'repair', text: 'На ремонте' };
+  if (l.status === 'busy') return { cls: 'busy', text: `до <span class="mono">${fmtTime(l.until)}</span>` };
+  if (l.nextBooking && l.nextBooking - v.now < 90 * 60e3) return { cls: 'booked', text: `Бронь <span class="mono">${fmtTime(l.nextBooking)}</span>` };
+  return { cls: 'free', text: 'Свободен', later: l.nextBooking ? fmtTime(l.nextBooking) : null };
+}
+const freeCount = v => ALL_SEATS.filter(s => v.live[s].status === 'free').length;
+
+// ---------- каркас ----------
+const app = $('#app');
+function shell() {
+  app.innerHTML = `
+    <header class="topbar" id="topbar"></header>
+    <main class="screen" id="main"></main>
+    <div id="bar"></div>
+    <nav class="tabbar" id="tabbar" aria-label="Разделы"></nav>`;
+  window.addEventListener('scroll', () => $('#topbar')?.classList.toggle('scrolled', scrollY > 4), { passive: true });
+}
+
+const CLIENT_TABS = [['home', 'Клуб', 'home'], ['book', 'Бронь', 'seat'], ['tours', 'Турниры', 'trophy'], ['promos', 'Акции', 'tag'], ['me', 'Профиль', 'user']];
+const ADMIN_TABS = [['hall', 'Зал', 'grid'], ['bookings', 'Брони', 'list'], ['tours', 'Турниры', 'trophy'], ['promos', 'Акции', 'tag']];
+
+function renderTop(v) {
+  const free = freeCount(v);
+  $('#topbar').innerHTML = S.admin
+    ? `<div class="wordmark"><b>NEBUL<i>A</i></b><small>GAMING</small></div><span class="admin-flag">${icon('shield', 14)}Админ</span><span class="spacer"></span>
+       <button class="icon-btn" data-a="adminExit" aria-label="Выйти из админки">${icon('logout', 20)}</button>`
+    : `<div class="wordmark" data-a="logoTap"><b>NEBUL<i>A</i></b><small>GAMING</small></div><span class="spacer"></span>
+       <button class="live-pill" data-a="go" data-tab="book" aria-label="Свободно ${free} из 22"><span class="dot"></span><b>${free}</b>/ 22 свободно</button>`;
+}
+function renderTabs(v) {
+  const tabs = S.admin ? ADMIN_TABS : CLIENT_TABS;
+  const cur = S.admin ? S.adminTab : S.tab;
+  const pending = S.admin ? (v.bookings || []).filter(b => b.status === 'new' && b.start + b.hours * 3600e3 > v.now).length : 0;
+  const mine = !S.admin ? v.myBookings.filter(b => ['new', 'confirmed'].includes(b.status) && b.start + b.hours * 3600e3 > v.now).length : 0;
+  const nav = $('#tabbar');
+  nav.style.setProperty('--n', tabs.length);
+  nav.innerHTML = tabs.map(([id, label, ic]) => {
+    const badge = (S.admin && id === 'bookings' && pending) ? `<span class="badge">${pending}</span>` : (!S.admin && id === 'me' && mine) ? `<span class="badge">${mine}</span>` : '';
+    return `<button class="tab ${cur === id ? 'on' : ''}" data-a="${S.admin ? 'aTab' : 'go'}" data-tab="${id}" aria-current="${cur === id ? 'page' : 'false'}">${icon(ic, 22)}<span>${label}</span>${badge}</button>`;
+  }).join('');
+}
+
+let lastKey = '';
+let adminApi;
+function render() {
+  const v = store.view; if (!v) return;
+  document.body.classList.toggle('admin', S.admin);
+  const key = S.admin ? 'a:' + S.adminTab : S.tab;
+  const fresh = key !== lastKey;
+  // сохраняем горизонтальные прокрутки
+  const keep = {}; $$('[data-keep]').forEach(el => { keep[el.dataset.keep] = el.scrollLeft; });
+  renderTop(v); renderTabs(v);
+  const main = $('#main');
+  let html = '';
+  if (S.admin) html = adminApi.screens[S.adminTab](v);
+  else html = ({ home, book, tours, promos, me })[S.tab](v);
+  main.className = 'screen' + (fresh ? ' enter' : '') + (!S.admin && S.tab === 'book' ? ' with-bar' : '');
+  main.innerHTML = html;
+  $('#bar').innerHTML = !S.admin && S.tab === 'book' ? sumbar(v) : '';
+  $$('[data-keep]').forEach(el => { if (!fresh && keep[el.dataset.keep] != null) el.scrollLeft = keep[el.dataset.keep]; });
+  if (fresh) { scrollTo(0, 0); afterFresh(); }
+  lastKey = key;
+  window.__rootBack = (!S.admin && S.tab !== 'home') ? () => go('home') : (S.admin ? () => H.adminExit() : null);
+  if (!topSheet()) setBack(window.__rootBack);
+}
+function afterFresh() {
+  const n = $('#heroNum'); if (n) countUp(n, Number(n.dataset.to));
+  const t = $('[data-keep="times"] .chip.on'); if (t) t.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+function go(tab) { S.tab = tab; haptic.tap(); render(); }
+
+// ---------- КЛУБ (главная) ----------
+function home(v) {
+  const free = freeCount(v);
+  const nextT = v.tournaments.find(t => t.start > v.now);
+  const fromP = Math.min(...ZONES.map(z => z.price[0]));
+  return `
+  <section class="hero" aria-label="Свободные места сейчас">
+    <div class="hero-top">
+      <div>
+        <div class="hero-num"><span class="big" id="heroNum" data-to="${free}">${free}</span><span class="of">/ 22</span></div>
+        <div class="hero-label">Свободно сейчас</div>
+        <div class="hero-upd"><span class="dot"></span><span>обновлено <span class="mono">${fmtTime(v.now)}</span></span></div>
+      </div>
+    </div>
+    <div class="minimap">
+      ${ZONES.map(z => `<div class="mm-row"><span class="zl">${zoneLabel(z)}<em>${z.hz}</em></span><div class="mm-seats">${z.seats.map(s => `<span class="mm ${liveState(v, s).cls}" title="Место ${s}">${s}</span>`).join('')}</div></div>`).join('')}
+    </div>
+    <div class="legend"><span><i style="background:var(--green)"></i>Свободен</span><span><i style="background:#2a2c4a"></i>Занят</span><span><i style="background:var(--amber)"></i>Скоро бронь</span><span><i style="background:var(--red)"></i>Ремонт</span></div>
+  </section>
+  <div style="margin-top:12px"><button class="btn" data-a="go" data-tab="book">${icon('seat', 18)}Забронировать место</button></div>
+  <div class="facts">
+    <div><b>500<em>Hz</em></b><span>мониторы</span></div>
+    <div><b>5070</b><span>RTX видеокарты</span></div>
+    <div><b>₾${fromP}</b><span>от / час</span></div>
+  </div>
+
+  ${nextT ? `<section class="sec">
+    <div class="sec-head"><h2 class="h2">Ближайший турнир</h2><button class="link-btn" data-a="go" data-tab="tours">Все${icon('chevron', 16)}</button></div>
+    ${tourCard(nextT, v)}
+  </section>` : ''}
+
+  <section class="sec">
+    <div class="sec-head"><h2 class="h2">Пакетом выгоднее</h2><button class="link-btn" data-a="go" data-tab="promos">Цены${icon('chevron', 16)}</button></div>
+    <div class="hscroll" data-keep="pk">
+      ${PACKAGES.map(pk => {
+        const min = pk.prices.start[0];
+        const hourly = ZONES.find(z => z.id === 'ultra').price[0] * pk.hours;
+        const ultra = pk.prices.ultra[0];
+        return `<button class="pk-card" data-a="usePkg" data-pkg="${pk.id}"><span class="w">${pk.window}</span><span class="n">${pk.name.replace('Пакет на ', '')}</span><span class="p"><small>от</small>₾${min}</span><span class="save">500Hz: ₾${ultra} вместо ₾${hourly}</span></button>`;
+      }).join('')}
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2 class="h2">Сетапы</h2><span class="dim" style="font-size:13px">Пн–Чт / Пт–Вс</span></div>
+    <div class="rows">
+      ${ZONES.map(z => `<button class="rowi" data-a="zoneInfo" data-zone="${z.id}">
+        <span class="grow"><span class="t">${z.name} <span class="dim" style="font-weight:500">${z.hz}Hz</span></span><span class="s">${z.specs.GPU} · ${z.specs['Монитор']}</span></span>
+        <span style="text-align:right"><span class="fig cyan" style="font-size:17px">₾${z.price[0]}</span><span class="dim" style="font-size:13px"> / ${z.price[1]}</span></span>
+        ${icon('chevron', 18)}</button>`).join('')}
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><h2 class="h2">Как добраться</h2></div>
+    ${contactsBlock()}
+  </section>
+  ${footer()}`;
+}
+function contactsBlock() {
+  return `<div class="rows">
+      <button class="rowi" data-a="open" data-url="${CLUB.map}"><span class="ic-wrap">${icon('pin', 20)}</span><span class="grow"><span class="t">${CLUB.name}</span><span class="s">${CLUB.city} · открыть в Google Maps</span></span>${icon('chevron', 18)}</button>
+      <a class="rowi" href="tel:${CLUB.phoneRaw}"><span class="ic-wrap">${icon('phone', 20)}</span><span class="grow"><span class="t">${CLUB.phone}</span><span class="s">Позвонить в клуб</span></span>${icon('chevron', 18)}</a>
+    </div>
+    <div class="socials">
+      <a href="${CLUB.instagram}" data-a="open" data-url="${CLUB.instagram}">Instagram</a>
+      <a href="${CLUB.tiktok}" data-a="open" data-url="${CLUB.tiktok}">TikTok</a>
+      <a href="${CLUB.facebook}" data-a="open" data-url="${CLUB.facebook}">Facebook</a>
+    </div>`;
+}
+const footer = () => `<footer class="foot"><div class="wordmark"><b>NEBUL<i>A</i></b><small>GAMING</small></div>Connect. Play. Win. · Батуми</footer>`;
+
+H.zoneInfo = el => {
+  const z = C.zoneById(el.dataset.zone);
+  const s = sheet({
+    title: `${z.name} · ${z.hz}Hz`,
+    body: `<p class="muted lead"><span class="fig cyan" style="font-size:22px">₾${z.price[0]}</span> <span class="dim">/ ₾${z.price[1]} за час${z.perSeat ? ' за место' : ''} · Пн–Чт / Пт–Вс</span></p>
+      <dl class="specs">${Object.entries(z.specs).map(([k, val]) => `<dt>${k}</dt><dd>${esc(val)}</dd>`).join('')}</dl>
+      <button class="btn" data-a="bookZone" data-zone="${z.id}">Выбрать место в ${zoneLabel(z)}</button>`,
+  });
+  s.root.dataset.zone = z.id;
+};
+H.bookZone = el => { closeAllSheets(); S.tab = 'book'; render(); setTimeout(() => $('#zone-' + el.dataset.zone)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
+H.open = (el, e) => { e.preventDefault(); openLink(el.dataset.url); };
+H.go = el => { closeAllSheets(); go(el.dataset.tab); };
+
+// ---------- БРОНЬ ----------
+function book(v) {
+  const days = Array.from({ length: 7 }, (_, i) => dayStart(Date.now()) + i * 864e5 + 3 * 3600e3).map(dayStart);
+  const minSlot = minSlotFor(S.bk.day);
+  const slots = []; for (let m = Math.max(0, minSlot); m <= 23 * 60 + 30; m += 30) slots.push(m);
+  const start = bkStart(), end = bkEnd();
+  const q = C.quote(S.bk.seats.size ? [...S.bk.seats] : [16], start, S.bk.hours);
+  const pkg = q.pkg && PACKAGES.find(p => p.id === q.pkg);
+  let note = `до <span class="mono" style="color:var(--ink)">${fmtTime(end)}</span>${clubParts(end).d !== clubParts(start).d ? ' следующего дня' : ''}`;
+  if (pkg) note += `<br><b>${pkg.name} — ${money(q.saving / Math.max(1, S.bk.seats.size || 1))} экономии с места</b>`;
+  else if (S.bk.hours === 3) note += '<br>Пакет 3 часа — при старте с 08:00 до 16:00';
+  return `
+  <h1 class="h1">Бронь места</h1>
+  <p class="sub">Выберите время — карта покажет, какие ПК свободны именно тогда.</p>
+
+  <div class="step">
+    <div class="step-t"><h2>Когда</h2><span class="hint">${C.isWeekend(start) ? 'Пт–Вс — тариф выходных' : 'Пн–Чт — будний тариф'}</span></div>
+    <div class="hscroll" data-keep="days" role="listbox" aria-label="День">
+      ${days.map((d, i) => {
+        const p = clubParts(d);
+        const lbl = i === 0 ? 'Сегодня' : i === 1 ? 'Завтра' : C.wdShort(d);
+        const disabled = i === 0 && nextSlotMin() > 23 * 60 + 30;
+        return `<button class="chip tall ${d === S.bk.day ? 'on' : ''}" data-a="bkDay" data-day="${d}" ${disabled ? 'disabled' : ''}>${lbl}<small>${p.d} ${['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][p.m]}</small></button>`;
+      }).join('')}
+    </div>
+    <div class="hscroll" data-keep="times" style="margin-top:10px" role="listbox" aria-label="Время начала">
+      ${slots.map(m => `<button class="chip time ${m === S.bk.startMin ? 'on' : ''}" data-a="bkTime" data-min="${m}">${pad(Math.floor(m / 60))}:${pad(m % 60)}</button>`).join('')}
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-t"><h2>Сколько играем</h2></div>
+    <div class="dur">
+      <div class="stepper">
+        <button data-a="bkHours" data-d="-1" ${S.bk.hours <= 1 ? 'disabled' : ''} aria-label="Меньше">${icon('minus', 20)}</button>
+        <output aria-live="polite">${S.bk.hours}<small>ч</small></output>
+        <button data-a="bkHours" data-d="1" ${S.bk.hours >= 12 ? 'disabled' : ''} aria-label="Больше">${icon('plus', 20)}</button>
+      </div>
+      <div class="dur-note">${note}</div>
+    </div>
+    <div class="hscroll" style="margin-top:12px" data-keep="pkgs">
+      ${PACKAGES.map(p => `<button class="chip ${q.pkg === p.id ? 'on' : ''}" data-a="usePkg" data-pkg="${p.id}">${p.short}<small>${p.window.replace(/ – /g, '–')}</small></button>`).join('')}
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-t"><h2>Место</h2><span class="hint">${S.bk.seats.size ? `выбрано ${S.bk.seats.size}` : 'можно несколько'}</span></div>
+    <div class="hscroll" data-keep="zj">
+      ${ZONES.map(z => {
+        const fr = z.seats.filter(s => seatInWindow(v, s).ok).length;
+        return `<button class="chip" data-a="jump" data-zone="${z.id}">${zoneLabel(z)}<small>${fr} из ${z.seats.length}</small></button>`;
+      }).join('')}
+    </div>
+    <div style="margin-top:12px">
+    ${ZONES.map(z => {
+      const pr = z.price[C.isWeekend(start) ? 1 : 0];
+      const allFree = z.seats.every(s => seatInWindow(v, s).ok);
+      return `<section class="zone" id="zone-${z.id}" aria-label="${z.name}">
+        <div class="zone-h"><b>${z.name}</b><span class="hz">${z.hz}Hz</span><span class="pr"><b>₾${pr}</b> / ${z.perSeat ? 'место' : 'час'}</span></div>
+        <div class="seats">${z.seats.map(s => seatTile(v, s)).join('')}</div>
+        ${allFree && z.seats.length > 1 ? `<div class="zone-tools"><button class="btn btn-ghost btn-xs" data-a="pickZone" data-zone="${z.id}">${z.id === 'duo' ? 'Вся комната' : 'Вся зона'} · ${z.seats.length} ${C.plural(z.seats.length, 'место', 'места', 'мест')}</button></div>` : ''}
+      </section>`;
+    }).join('')}
+    </div>
+  </div>`;
+}
+function seatTile(v, s) {
+  const st = seatInWindow(v, s);
+  const sel = S.bk.seats.has(s);
+  const later = st.ok && v.live[s].nextBooking && v.live[s].nextBooking >= bkEnd() && v.live[s].nextBooking - bkEnd() < 3 * 3600e3 ? fmtTime(v.live[s].nextBooking) : '';
+  return `<button class="seat ${st.cls} ${st.ok ? 'pick' : ''} ${sel ? 'sel' : ''}" data-a="bkSeat" data-seat="${s}" ${st.ok ? '' : 'disabled'} aria-pressed="${sel}" aria-label="Место ${s}, ${st.text.replace(/<[^>]+>/g, '')}">
+    <span class="n">${s}</span><span class="st">${sel ? 'Выбрано' : st.text}</span>
+    <span class="tick">${icon('check', 13)}</span>${later ? `<span class="later" title="Следующая бронь">${later}</span>` : ''}</button>`;
+}
+function sumbar(v) {
+  const n = S.bk.seats.size;
+  if (!n) return `<div class="sumbar empty"><div class="sumbar-in"><div class="tot"><b>Выберите место на карте</b><span>${relDay(bkStart())}, ${fmtTime(bkStart())}–${fmtTime(bkEnd())} · ${S.bk.hours} ч</span></div><button class="btn" disabled>Далее</button></div></div>`;
+  const q = C.quote([...S.bk.seats], bkStart(), S.bk.hours);
+  return `<div class="sumbar"><div class="sumbar-in">
+    <div class="tot"><b>${money(q.price)}${q.saving > 0 ? `<s>${money(q.hourly)}</s>` : ''}</b>
+    <span>${n === 1 ? 'Место ' : 'Места '}${[...S.bk.seats].sort((a, b) => a - b).join(', ')} · ${S.bk.hours} ч${q.saving > 0 ? ` · <em>пакет −${money(q.saving)}</em>` : ''}</span></div>
+    <button class="btn" data-a="bkNext">Далее${icon('chevron', 18)}</button></div></div>`;
+}
+function dropConflicts() {
+  const v = store.view; const dropped = [];
+  for (const s of [...S.bk.seats]) if (!seatInWindow(v, s).ok) { S.bk.seats.delete(s); dropped.push(s); }
+  if (dropped.length) toast(`${dropped.length > 1 ? 'Места' : 'Место'} ${dropped.join(', ')} ${dropped.length > 1 ? 'заняты' : 'занято'} в это время — убрали из выбора`);
+}
+H.bkDay = el => {
+  S.bk.day = Number(el.dataset.day);
+  const min = minSlotFor(S.bk.day); if (S.bk.startMin < min) S.bk.startMin = min;
+  haptic.tap(); dropConflicts(); render();
+  $('[data-keep="times"] .chip.on')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+};
+H.bkTime = el => { S.bk.startMin = Number(el.dataset.min); haptic.tap(); dropConflicts(); render(); };
+H.bkHours = el => { S.bk.hours = Math.max(1, Math.min(12, S.bk.hours + Number(el.dataset.d))); haptic.tap(); dropConflicts(); render(); };
+H.bkSeat = el => {
+  const s = Number(el.dataset.seat);
+  if (S.bk.seats.has(s)) S.bk.seats.delete(s); else { if (S.bk.seats.size >= 10) return toast('За раз — до 10 мест'); S.bk.seats.add(s); }
+  haptic.light(); render();
+};
+H.pickZone = el => { const z = C.zoneById(el.dataset.zone); z.seats.forEach(s => S.bk.seats.add(s)); haptic.light(); render(); };
+H.jump = el => { $('#zone-' + el.dataset.zone)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); haptic.tap(); };
+H.usePkg = el => {
+  const pk = PACKAGES.find(p => p.id === el.dataset.pkg);
+  const now = Date.now();
+  let day = S.tab === 'book' ? S.bk.day : dayStart(now);
+  let startMin = S.bk.startMin;
+  if (pk.fixedStart != null) startMin = pk.fixedStart;
+  else if (pk.id === 'p3' && !(startMin >= 480 && startMin <= 960)) startMin = 480;
+  if (isToday(day) && startMin < nextSlotMin(now)) {
+    if (pk.id === 'p5') startMin = nextSlotMin(now);
+    else if (pk.id === 'p3' && nextSlotMin(now) <= 960) startMin = Math.max(480, nextSlotMin(now));
+    else { day += 864e5; toast(`${pk.name} — переносим на завтра`); }
+  }
+  if (startMin > 23 * 60 + 30) { day += 864e5; startMin = 12 * 60; }
+  Object.assign(S.bk, { day, startMin, hours: pk.hours });
+  closeAllSheets();
+  dropConflicts();
+  S.tab = 'book'; haptic.tap(); render();
+};
+H.bkNext = () => {
+  const v = store.view; const seats = [...S.bk.seats].sort((a, b) => a - b);
+  const q = C.quote(seats, bkStart(), S.bk.hours);
+  const u = tgUser();
+  const name = LS.get('nebula:name') || (u ? [u.first_name, u.last_name].filter(Boolean).join(' ') : '');
+  const phone = LS.get('nebula:phone') || '';
+  const zones = [...new Set(seats.map(s => zoneLabel(C.zoneOf(s))))].join(', ');
+  const pk = q.pkg && PACKAGES.find(p => p.id === q.pkg);
+  haptic.light();
+  sheet({
+    title: 'Подтверждение',
+    body: `<div class="summary">
+        <div class="li"><span>${seats.length > 1 ? 'Места' : 'Место'}</span><span>${seats.join(', ')} · ${zones}</span></div>
+        <div class="li"><span>Когда</span><span>${relDay(bkStart())}, ${fmtTime(bkStart())}–${fmtTime(bkEnd())}</span></div>
+        <div class="li"><span>Тариф</span><span>${pk ? pk.name : `${S.bk.hours} ч по часам`}${q.weekend ? ' · выходные' : ''}</span></div>
+        <div class="li total"><span>Итого</span><span>${q.saving > 0 ? `<s>${money(q.hourly)}</s>` : ''}${money(q.price)}</span></div>
+      </div>
+      <form id="bkForm" novalidate>
+        <label class="field"><span>Имя</span><input name="name" autocomplete="name" value="${esc(name)}" placeholder="Как к вам обращаться" required></label>
+        <label class="field"><span>Телефон</span><div class="with-btn"><input name="phone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(phone)}" placeholder="+995 5__ __ __ __" required>${tg?.requestContact ? `<button type="button" class="btn btn-ghost btn-sm" data-a="askContact" style="height:52px">Из Telegram</button>` : ''}</div></label>
+        <label class="field"><span>Комментарий <span class="dim" style="font-weight:500">— необязательно</span></span><input name="comment" placeholder="Например: придём вдвоём, нужен геймпад"></label>
+        <p class="pay-note">${icon('clock', 16)}<span>Оплата в клубе. Место держим 15 минут после начала брони.</span></p>
+        <button class="btn" type="submit" data-a="bkSubmit">Забронировать · ${money(q.price)}</button>
+      </form>`,
+  });
+};
+H.askContact = el => {
+  tg.requestContact((ok, resp) => {
+    const ph = resp?.responseUnsafe?.contact?.phone_number;
+    if (ph) { const inp = $('#bkForm [name=phone]'); inp.value = (ph.startsWith('+') ? '' : '+') + ph; haptic.ok(); }
+    else if (!ok) toast('Можно ввести номер вручную');
+  });
+};
+H.bkSubmit = async (el, e) => {
+  e.preventDefault();
+  const f = $('#bkForm'); const data = Object.fromEntries(new FormData(f));
+  await busy(el, async () => {
+    try {
+      const res = await store.act('createBooking', { ...data, seats: [...S.bk.seats], start: bkStart(), hours: S.bk.hours });
+      LS.set('nebula:name', data.name); LS.set('nebula:phone', data.phone);
+      haptic.ok();
+      closeAllSheets();
+      S.bk.seats.clear(); render();
+      successSheet(res.booking);
+    } catch (err) { toast(err.message, 'err'); }
+  });
+};
+function successSheet(b) {
+  const z = C.zoneOf(b.seats[0]);
+  sheet({
+    body: `<div class="done">
+      <div class="done-mark"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
+      <h2>${b.seats.length > 1 ? `Места ${b.seats.join(', ')} ваши` : `Место ${b.seats[0]} ваше`}</h2>
+      <p class="muted">${relDay(b.start)}, ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)} · ${zoneLabel(z)} ${z.hz}Hz</p>
+      <div class="code">${b.code}</div>
+      <p class="dim" style="font-size:13.5px;margin:6px 0 24px">Назовите код на ресепшене. ${store.mode === 'remote' ? 'Подтверждение придёт в Telegram.' : 'Администратор подтвердит бронь.'}</p>
+      <div class="row-btns"><button class="btn btn-ghost" data-a="open" data-url="${CLUB.map}">${icon('route', 18)}Маршрут</button><button class="btn" data-close>Готово</button></div>
+    </div>`,
+  });
+}
+
+// ---------- ТУРНИРЫ ----------
+function untilText(t, now) {
+  const d = t - now;
+  if (d < 0) return 'идёт сейчас';
+  if (d < 3600e3) return `через ${Math.max(1, Math.round(d / 60e3))} мин`;
+  if (isToday(t)) return `сегодня в ${fmtTime(t)}`;
+  const days = Math.round((dayStart(t) - dayStart(now)) / 864e5);
+  if (days === 1) return `завтра в ${fmtTime(t)}`;
+  return `через ${days} ${C.plural(days, 'день', 'дня', 'дней')}`;
+}
+function tourCard(t, v) {
+  const full = t.regCount >= t.slots;
+  const unit = t.teamSize > 1 ? C.plural(t.slots, 'команда', 'команды', 'команд') : C.plural(t.slots, 'игрок', 'игрока', 'игроков');
+  return `<article class="card tour hue-${t.hue}">
+    <div class="tour-band"></div>
+    <div class="tour-in" data-a="tourOpen" data-id="${t.id}" role="button" tabindex="0">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span class="game"><i></i>${esc(t.game)} · ${esc(t.format)}</span><span class="countdown">${untilText(t.start, v.now)}</span></div>
+      <h3>${esc(t.title)}</h3>
+      <div class="tour-meta">
+        <div><b class="cyan">₾${t.prize}</b><span>призовой</span></div>
+        <div><b>${fmtDay(t.start).split(', ')[1]}</b><span>${C.wdShort(t.start)}, ${fmtTime(t.start)}</span></div>
+        <div><b>${t.entry ? '₾' + t.entry : 'Free'}</b><span>${t.entry ? t.entryUnit : 'вход'}</span></div>
+      </div>
+      <div class="slots"><div class="bar"><i style="width:${Math.min(100, t.regCount / t.slots * 100)}%"></i></div><span><b style="color:var(--ink)">${t.regCount}</b> из ${t.slots} ${unit}</span></div>
+    </div>
+    <div style="padding:0 18px 18px">
+      ${t.myReg ? `<div class="reg-ok">${icon('check', 18)}Вы участвуете · ${esc(t.myReg.team)}</div>`
+        : !t.open ? `<button class="btn btn-ghost" disabled>Регистрация закрыта</button>`
+        : full ? `<button class="btn btn-ghost" disabled>Мест нет</button>`
+        : `<button class="btn" data-a="tourOpen" data-id="${t.id}" data-reg="1">Участвовать</button>`}
+    </div>
+  </article>`;
+}
+function tours(v) {
+  const upcoming = v.tournaments.filter(t => t.start > v.now - 6 * 3600e3);
+  const past = v.tournaments.filter(t => t.start <= v.now - 6 * 3600e3);
+  return `<h1 class="h1">Турниры</h1>
+    <p class="sub">Регистрируйтесь прямо здесь — взнос оплачивается на ресепшене в день игры.</p>
+    ${upcoming.length ? upcoming.map(t => tourCard(t, v)).join('') : `<div class="card empty"><b>Скоро анонсируем новый турнир</b>Включите уведомления в «Акциях», чтобы не пропустить.</div>`}
+    ${past.length ? `<h2 class="group-t">Прошедшие</h2><div class="rows">${past.map(t => `<div class="rowi"><span class="grow"><span class="t">${esc(t.title)}</span><span class="s">${esc(t.game)} · ${fmtDay(t.start)}</span></span><span class="dim">${t.regCount} уч.</span></div>`).join('')}</div>` : ''}
+    ${footer()}`;
+}
+H.tourOpen = el => {
+  const v = store.view; const t = v.tournaments.find(x => x.id === el.dataset.id); if (!t) return;
+  const u = tgUser();
+  const solo = t.teamSize === 1;
+  const canReg = t.open && !t.myReg && t.regCount < t.slots;
+  const s = sheet({
+    title: t.title,
+    body: `<p class="muted" style="margin:0 0 16px">${esc(t.game)} · ${esc(t.format)} · ${fmtDay(t.start)}, ${fmtTime(t.start)}</p>
+      <div class="summary">
+        <div class="li"><span>Призовой фонд</span><span class="cyan">₾${t.prize}${t.prizeNote ? ` <span class="dim" style="font-weight:500">(${esc(t.prizeNote)})</span>` : ''}</span></div>
+        <div class="li"><span>Взнос</span><span>${t.entry ? `₾${t.entry} ${t.entryUnit}` : 'бесплатно'}</span></div>
+        <div class="li"><span>Участники</span><span>${t.regCount} из ${t.slots}</span></div>
+      </div>
+      ${t.about ? `<p style="margin:0 0 18px;color:var(--ink-2);font-size:14.5px;line-height:1.55">${esc(t.about)}</p>` : ''}
+      ${t.teams.length ? `<h3 class="group-t" style="margin-top:0">${solo ? 'Игроки' : 'Команды'}</h3><div class="team-list" style="margin-bottom:22px">${t.teams.map(n => `<span>${esc(n)}</span>`).join('')}</div>` : ''}
+      ${t.myReg ? `<div class="reg-ok" style="margin-bottom:10px">${icon('check', 18)}Вы в списке · ${esc(t.myReg.team)}</div><button class="btn btn-ghost" data-a="tourLeave" data-id="${t.id}">Отменить участие</button>`
+        : canReg ? `<form id="regForm" novalidate>
+          <h3 class="group-t" style="margin-top:0">Регистрация</h3>
+          <label class="field"><span>${solo ? 'Никнейм' : 'Название команды'}</span><input name="team" placeholder="${solo ? 'Ваш ник в игре' : 'Например, Batumi Five'}" required></label>
+          ${solo ? '' : `<label class="field"><span>Капитан</span><input name="captain" placeholder="Ник капитана" value="${esc(u?.username ? '@' + u.username : '')}"></label>
+          <label class="field"><span>Состав <span class="dim" style="font-weight:500">— можно позже</span></span><input name="players" placeholder="Ники через запятую"></label>`}
+          <label class="field"><span>Связь</span><input name="contact" placeholder="@username или телефон" value="${esc(u?.username ? '@' + u.username : (LS.get('nebula:phone') || ''))}" required></label>
+          <button class="btn" type="submit" data-a="tourReg" data-id="${t.id}">Зарегистрироваться${t.entry ? ` · ₾${t.entry}` : ''}</button>
+        </form>` : `<button class="btn btn-ghost" disabled>${t.open ? 'Мест нет' : 'Регистрация закрыта'}</button>`}`,
+  });
+  if (el.dataset.reg) setTimeout(() => s.body.querySelector('[name=team]')?.focus({ preventScroll: true }), 450);
+};
+H.tourReg = async (el, e) => {
+  e.preventDefault();
+  const d = Object.fromEntries(new FormData($('#regForm')));
+  await busy(el, async () => {
+    try {
+      await store.act('registerTournament', { id: el.dataset.id, team: d.team, captain: d.captain, contact: d.contact, players: (d.players || '').split(',') });
+      haptic.ok(); closeAllSheets(); render(); toast('Вы зарегистрированы. Увидимся на турнире!', 'ok');
+    } catch (err) { toast(err.message, 'err'); }
+  });
+};
+H.tourLeave = async el => {
+  if (!(await confirmSheet({ title: 'Отменить участие?', text: 'Место освободится для другой команды.', ok: 'Отменить участие', danger: true }))) return;
+  try { await store.act('leaveTournament', { id: el.dataset.id }); closeAllSheets(); render(); toast('Участие отменено'); } catch (err) { toast(err.message, 'err'); }
+};
+
+// ---------- АКЦИИ ----------
+function promos(v) {
+  const z = C.zoneById(S.promoZone);
+  return `<h1 class="h1">Акции</h1>
+    <p class="sub">Пакеты по времени выгоднее почасовой оплаты. Все цены — за одно место.</p>
+    <div class="card sub-card">
+      <span class="ic-wrap">${icon('bell', 22)}</span>
+      <span><b style="display:block;font-size:15px">Сообщать об акциях</b><span class="dim" style="font-size:13px">Новые скидки и турниры — сообщением в Telegram</span></span>
+      <button class="switch ${v.subscribed ? 'on' : ''}" role="switch" aria-checked="${v.subscribed}" data-a="sub" aria-label="Уведомления об акциях"></button>
+    </div>
+
+    ${v.promos.length ? `<section class="sec" style="margin-top:28px">
+      <h2 class="h2" style="margin-bottom:14px">Сейчас действуют</h2>
+      ${v.promos.map(p => `<article class="card promo"><h3 class="h3">${esc(p.title)}</h3>${p.badge ? `<span class="badge-lg">${esc(p.badge)}</span>` : '<span></span>'}<p>${esc(p.text)}</p></article>`).join('')}
+    </section>` : ''}
+
+    <section class="sec">
+      <h2 class="h2" style="margin-bottom:14px">Пакетные цены</h2>
+      <div class="seg" role="tablist" data-keep="pz">${C.HZ_ROWS.map(([id, label]) => `<button role="tab" class="${S.promoZone === id ? 'on' : ''}" data-a="pz" data-zone="${id}" aria-selected="${S.promoZone === id}">${label}</button>`).join('')}</div>
+      <div class="card" style="margin-top:12px;padding:14px 18px 6px">
+        <table class="ptable">
+          <thead><tr><th>Пакет</th><th>Пн–Чт</th><th>Пт–Вс</th></tr></thead>
+          <tbody>${PACKAGES.map(pk => {
+            const [a, b] = pk.prices[z.id];
+            const save = z.price[0] * pk.hours - a;
+            return `<tr><td><span class="pn">${pk.name.replace('Пакет на ', '')}</span><span class="pw">${pk.window}</span></td>
+              <td><span class="pv">₾${a}</span>${save > 0 ? `<span class="ps">−₾${save}</span>` : ''}</td><td class="pv2">₾${b}</td></tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>
+      <p class="dim" style="font-size:13px;margin:12px 2px 16px">Почасово ${z.name}: ₾${z.price[0]} / ₾${z.price[1]}. Пакет применяется сам, когда время брони подходит.</p>
+      <button class="btn" data-a="go" data-tab="book">Забронировать</button>
+    </section>
+    ${footer()}`;
+}
+H.pz = el => { S.promoZone = el.dataset.zone; haptic.tap(); render(); };
+H.sub = async el => {
+  const on = !store.view.subscribed;
+  el.classList.toggle('on', on);
+  if (on) await requestWrite();
+  try { await store.act('subscribe', { on }); haptic.ok(); toast(on ? 'Готово — пришлём, как только будет новая акция' : 'Уведомления выключены', on ? 'ok' : 'info'); render(); }
+  catch (err) { el.classList.toggle('on', !on); toast(err.message, 'err'); }
+};
+
+// ---------- ПРОФИЛЬ ----------
+function me(v) {
+  const u = tgUser();
+  const name = u ? [u.first_name, u.last_name].filter(Boolean).join(' ') : (LS.get('nebula:name') || 'Гость');
+  const now = v.now;
+  const up = v.myBookings.filter(b => b.start + b.hours * 3600e3 > now && ['new', 'confirmed', 'arrived'].includes(b.status)).sort((a, b) => a.start - b.start);
+  const past = v.myBookings.filter(b => !up.includes(b)).slice(0, 6);
+  const myT = v.tournaments.filter(t => t.myReg);
+  return `<div class="me">
+      <div class="avatar">${u?.photo_url ? `<img src="${esc(u.photo_url)}" alt="">` : esc(name.slice(0, 1).toUpperCase())}</div>
+      <div><h1>${esc(name)}</h1><p>${u?.username ? '@' + esc(u.username) : 'Гость NEBULA'}</p></div>
+    </div>
+    <section class="sec" style="margin-top:24px">
+      <div class="sec-head"><h2 class="h2">Мои брони</h2></div>
+      ${up.length ? up.map(b => bookingCard(b)).join('') : `<div class="card empty"><b>Пока без броней</b>Выберите свободный ПК — это займёт минуту.<div style="margin-top:16px"><button class="btn btn-sm" data-a="go" data-tab="book" style="width:auto">Забронировать</button></div></div>`}
+      ${past.length ? `<h3 class="group-t">История</h3><div class="rows">${past.map(b => `<div class="rowi"><span class="grow"><span class="t">${b.seats.length > 1 ? 'Места' : 'Место'} ${b.seats.join(', ')}</span><span class="s">${fmtDay(b.start)}, ${fmtTime(b.start)} · ${b.hours} ч</span></span><span class="pill ${b.status}">${STATUS[b.status]}</span></div>`).join('')}</div>` : ''}
+    </section>
+    ${myT.length ? `<section class="sec"><div class="sec-head"><h2 class="h2">Мои турниры</h2></div><div class="rows">${myT.map(t => `<button class="rowi" data-a="tourOpen" data-id="${t.id}"><span class="grow"><span class="t">${esc(t.title)}</span><span class="s">${esc(t.myReg.team)} · ${fmtDay(t.start)}, ${fmtTime(t.start)}</span></span>${icon('chevron', 18)}</button>`).join('')}</div></section>` : ''}
+    <section class="sec">
+      <div class="rows">
+        <div class="rowi"><span class="ic-wrap">${icon('bell', 20)}</span><span class="grow"><span class="t">Уведомления об акциях</span><span class="s">Скидки и анонсы турниров</span></span><button class="switch ${v.subscribed ? 'on' : ''}" role="switch" aria-checked="${v.subscribed}" data-a="sub" aria-label="Уведомления"></button></div>
+        <button class="rowi" data-a="open" data-url="${CLUB.map}"><span class="ic-wrap">${icon('pin', 20)}</span><span class="grow"><span class="t">Как добраться</span><span class="s">${CLUB.city}</span></span>${icon('chevron', 18)}</button>
+        <a class="rowi" href="tel:${CLUB.phoneRaw}"><span class="ic-wrap">${icon('phone', 20)}</span><span class="grow"><span class="t">${CLUB.phone}</span><span class="s">Вопросы и групповые брони</span></span>${icon('chevron', 18)}</a>
+        <button class="rowi" data-a="adminLogin"><span class="ic-wrap">${icon('shield', 20)}</span><span class="grow"><span class="t">Для персонала</span><span class="s">Вход в админ-панель</span></span>${icon('chevron', 18)}</button>
+      </div>
+    </section>
+    ${footer()}`;
+}
+export const STATUS = { new: 'Ждёт подтверждения', confirmed: 'Подтверждена', arrived: 'В клубе', done: 'Завершена', cancelled: 'Отменена', noshow: 'Не пришли' };
+function bookingCard(b) {
+  const z = C.zoneOf(b.seats[0]);
+  const pk = b.pkg && PACKAGES.find(p => p.id === b.pkg);
+  return `<article class="card bk">
+    <div class="bk-top"><span class="bk-when">${relDay(b.start)}, ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)}</span><span class="pill ${b.status}">${STATUS[b.status]}</span></div>
+    <div class="bk-meta">${b.seats.length > 1 ? 'Места' : 'Место'} ${b.seats.join(', ')} · ${zoneLabel(z)} ${z.hz}Hz · ${pk ? pk.name.toLowerCase() : b.hours + ' ч'}</div>
+    <div class="bk-foot"><span><span class="mono cyan" style="font-size:15px;font-weight:600">${b.code}</span> <span class="fig" style="margin-left:8px">${money(b.price)}</span></span>
+    ${['new', 'confirmed'].includes(b.status) ? `<button class="btn btn-ghost btn-xs" data-a="cancelBk" data-id="${b.id}">Отменить</button>` : ''}</div>
+  </article>`;
+}
+H.cancelBk = async el => {
+  if (!(await confirmSheet({ title: 'Отменить бронь?', text: 'Место станет доступно другим гостям.', ok: 'Отменить бронь', danger: true }))) return;
+  try { await store.act('cancelBooking', { id: el.dataset.id }); haptic.warn(); render(); toast('Бронь отменена'); } catch (err) { toast(err.message, 'err'); }
+};
+
+// ---------- вход в админку ----------
+let taps = 0, tapTimer;
+H.logoTap = () => { taps++; clearTimeout(tapTimer); tapTimer = setTimeout(() => (taps = 0), 1200); if (taps >= 5) { taps = 0; H.adminLogin(); } };
+H.adminLogin = () => {
+  if (store.isAdmin) return enterAdmin();
+  const s = sheet({
+    title: 'Вход для персонала',
+    body: `<form id="pinForm" novalidate>
+      <label class="field"><span>PIN-код</span><input name="pin" type="password" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="••••" style="font-family:var(--f-mono);letter-spacing:.3em;font-size:20px"></label>
+      ${store.mode === 'local' ? '<p class="dim" style="font-size:13px;margin:-4px 0 16px">Демо-версия: PIN 2828</p>' : ''}
+      <button class="btn" type="submit" data-a="pinSubmit">Войти</button></form>`,
+  });
+  setTimeout(() => s.body.querySelector('input')?.focus(), 400);
+};
+H.pinSubmit = async (el, e) => {
+  e.preventDefault();
+  const pin = $('#pinForm [name=pin]').value.trim();
+  await busy(el, async () => {
+    if (await store.login(pin)) { haptic.ok(); closeAllSheets(); enterAdmin(); }
+    else toast('Неверный PIN', 'err');
+  });
+};
+function enterAdmin() { S.admin = true; S.adminTab = 'hall'; render(); }
+H.adminExit = () => { S.admin = false; S.tab = 'me'; closeAllSheets(); render(); };
+H.aTab = el => { S.adminTab = el.dataset.tab; haptic.tap(); closeAllSheets(); render(); };
+
+// ---------- запуск ----------
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-a]');
+  if (!el || el.disabled) return;
+  const fn = H[el.dataset.a] || adminApi?.handlers[el.dataset.a];
+  if (fn) fn(el, e);
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  const btn = e.target.querySelector('[type=submit][data-a]');
+  if (btn) btn.click();
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role=button][data-a]')) { e.preventDefault(); e.target.click(); }
+});
+
+async function boot() {
+  initTelegram();
+  shell();
+  adminApi = initAdmin({ S, render, liveState, STATUS, zoneLabel });
+  store.on(() => render());
+  await store.init();
+  const start = tg?.initDataUnsafe?.start_param || location.hash.slice(1) || (location.pathname.startsWith('/admin') ? 'admin' : '');
+  if (start === 'book') S.tab = 'book';
+  if (start === 'tours') S.tab = 'tours';
+  if (start === 'promos') S.tab = 'promos';
+  if (start === 'admin') { if (store.isAdmin) S.admin = true; else setTimeout(H.adminLogin, 300); }
+  render();
+  document.documentElement.classList.add('ready');
+  setInterval(() => { if (!document.hidden) store.refresh(); }, store.mode === 'remote' ? 15000 : 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) store.refresh(); });
+}
+boot();
