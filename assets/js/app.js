@@ -1,9 +1,9 @@
-import * as C from './core.js?v=1793300072';
-import { store } from './store.js?v=1793300072';
-import { tg, tgUser, initTelegram, haptic, setBack, openLink, requestWrite } from './tg.js?v=1793300072';
-import { esc, $, $$, icon, toast, sheet, confirmSheet, countUp, busy, money, closeAllSheets, topSheet } from './ui.js?v=1793300072';
-import { initAdmin } from './admin.js?v=1793300072';
-import { initOnboarding, avatarHTML } from './onboarding.js?v=1793300072';
+import * as C from './core.js?v=1793300130';
+import { store } from './store.js?v=1793300130';
+import { tg, tgUser, initTelegram, haptic, setBack, openLink, requestWrite } from './tg.js?v=1793300130';
+import { esc, $, $$, icon, toast, sheet, confirmSheet, countUp, busy, money, closeAllSheets, topSheet } from './ui.js?v=1793300130';
+import { initAdmin } from './admin.js?v=1793300130';
+import { initOnboarding, avatarHTML } from './onboarding.js?v=1793300130';
 
 const { ZONES, PACKAGES, ALL_SEATS, CLUB, fmtTime, fmtDay, relDay, pad, clubParts, dayStart } = C;
 const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* */ } } };
@@ -492,7 +492,7 @@ function successSheet(b) {
       <h2>${b.seats.length > 1 ? `Места ${b.seats.join(', ')} ваши` : `Место ${b.seats[0]} ваше`}</h2>
       <p class="muted">${relDay(b.start)}, ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)} · ${zoneLabel(z)} ${z.hz}Hz</p>
       <div class="code">${b.code}</div>
-      <p class="dim" style="font-size:13.5px;margin:6px 0 24px">Назовите код на ресепшене. ${store.mode === 'remote' ? 'Подтверждение придёт в Telegram.' : 'Администратор подтвердит бронь.'}</p>
+      <p class="dim" style="font-size:13.5px;margin:6px 0 24px">Покажите этот код администратору, когда придёте в клуб: по нему он быстро найдёт вашу бронь. ${store.mode === 'remote' ? 'Подтверждение придёт в Telegram.' : ''}</p>
       <div class="row-btns"><button class="btn btn-ghost" data-a="open" data-url="${CLUB.map}">${icon('route', 18)}Маршрут</button><button class="btn" data-close>Готово</button></div>
     </div>`,
   });
@@ -681,7 +681,7 @@ function bookingCard(b) {
       <div class="bkc-r1"><span class="bkc-time">${fmtTime(b.start)} – ${fmtTime(b.start + b.hours * 3600e3)}</span><span class="pill ${b.status}">${STATUS[b.status]}</span></div>
       <div class="bkc-meta">${b.seats.length > 1 ? 'Места' : 'Место'} <b>${b.seats.join(', ')}</b> · ${zoneLabel(z)} ${z.hz}Hz · ${pk ? pkgLabel(pk) : b.hours + ' ' + C.plural(b.hours, 'час', 'часа', 'часов')}</div>
       ${b.promo ? `<div class="bkc-meta">${icon('tag', 13)} ${esc(b.promo)}</div>` : ''}
-      <div class="bkc-foot"><span class="bkc-codew"><small>Код на ресепшене</small><span class="bkc-code">${b.code}</span></span><span class="bkc-price">${money(b.price)}</span>
+      <div class="bkc-foot"><span class="bkc-codew"><small>Покажите администратору</small><span class="bkc-code">${b.code}</span></span><span class="bkc-price">${money(b.price)}</span>
       ${['new', 'confirmed'].includes(b.status) ? `<button class="btn btn-ghost btn-xs" data-a="cancelBk" data-id="${b.id}">Отменить</button>` : ''}</div>
     </div>
   </article>`;

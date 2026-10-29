@@ -1,8 +1,8 @@
 // Админ-панель: зал в реальном времени, брони, турниры, акции и рассылка.
-import * as C from './core.js?v=1793300072';
-import { store } from './store.js?v=1793300072';
-import { haptic } from './tg.js?v=1793300072';
-import { esc, $, icon, toast, sheet, confirmSheet, busy, money, closeAllSheets } from './ui.js?v=1793300072';
+import * as C from './core.js?v=1793300130';
+import { store } from './store.js?v=1793300130';
+import { haptic } from './tg.js?v=1793300130';
+import { esc, $, icon, toast, sheet, confirmSheet, busy, money, closeAllSheets } from './ui.js?v=1793300130';
 
 const { ZONES, ALL_SEATS, PACKAGES, fmtTime, fmtDay, relDay, pad, clubParts, dayStart } = C;
 
@@ -124,7 +124,7 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
         <div><span>Когда</span><b>${fmtTime(b.start)}–${fmtTime(endOf(b))}</b><em>${relDay(b.start)}</em></div>
         <div><span>${b.seats.length > 1 ? 'Места' : 'Место'}</span><b>${b.seats.join(', ')}</b><em>${zoneLabel(z)} ${z.hz}Hz</em></div>
         <div><span>Сумма</span><b>${money(b.price)}</b><em>${pk ? pkgLabel(pk) : b.hours + ' ч по часам'}</em></div>
-        <div><span>Код</span><b class="mono">${b.code}</b><em>${relDay(b.createdAt) === 'Сегодня' ? 'создана в ' + fmtTime(b.createdAt) : 'создана ' + fmtDay(b.createdAt)}</em></div>
+        <div><span>Код брони</span><b class="mono">${b.code}</b><em>${relDay(b.createdAt) === 'Сегодня' ? 'создана в ' + fmtTime(b.createdAt) : 'создана ' + fmtDay(b.createdAt)}</em></div>
       </div>
       ${b.bonusUsed ? `<div class="ab-note ab-promo">${icon('trophy', 15)}<span><b>Бонус:</b> списано ${b.bonusUsed} ч (−${money(b.bonusOff)})</span></div>` : ''}
       ${b.promo ? `<div class="ab-note ab-promo">${icon('tag', 15)}<span><b>Акция:</b> ${esc(b.promo)}</span></div>` : ''}

@@ -1,5 +1,5 @@
 // Мелкие UI-помощники: экранирование, иконки, тосты, нижние шторки.
-import { setBack, haptic } from './tg.js?v=1793300072';
+import { setBack, haptic } from './tg.js?v=1793300130';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const $ = (sel, root = document) => root.querySelector(sel);

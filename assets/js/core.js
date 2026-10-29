@@ -555,9 +555,9 @@ export function runAction(db, name, payload, ctx) {
 const seatLine = b => `🖥 ${b.seats.length > 1 ? 'Места' : 'Место'} ${b.seats.join(', ')} · ${[...new Set(b.seats.map(s => zoneOf(s).short || zoneOf(s).name))].join(', ')}`;
 const timeLine = b => `📅 ${relDay(b.start)} · ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)}`;
 export function clientText(kind, b) {
-  if (kind === 'created') return `🎮 <b>Бронь принята!</b>\n\n${seatLine(b)}\n${timeLine(b)}\n💳 ₾${b.price}, оплата в клубе\n\n🔑 Код брони: <b>${b.code}</b>\nНазови его на ресепшене, и тебя сразу найдут.\n\nАдмин скоро подтвердит бронь, ответ придёт сюда. За час до игры напомню 😉`;
-  if (kind === 'remind') return `⏰ <b>Через час игра!</b>\n\n${seatLine(b)}\n${timeLine(b)}\n🔑 Код: <b>${b.code}</b>\n\nМесто держим 15 минут после начала. Если планы поменялись, отмени бронь в приложении, чтобы место досталось другим.`;
-  if (kind === 'confirmed') return `✅ <b>Бронь подтверждена</b>\n\n${seatLine(b)}\n${timeLine(b)}\n🔑 Код: <b>${b.code}</b>\n\nЖдём тебя в NEBULA!`;
+  if (kind === 'created') return `🎮 <b>Бронь принята!</b>\n\n${seatLine(b)}\n${timeLine(b)}\n💳 ₾${b.price}, оплата в клубе\n\n🔑 Код брони: <b>${b.code}</b>\nПокажи его администратору, когда придёшь в клуб. По коду он сразу найдёт твою бронь.\n\nАдмин скоро подтвердит бронь, ответ придёт сюда. За час до игры напомню 😉`;
+  if (kind === 'remind') return `⏰ <b>Через час игра!</b>\n\n${seatLine(b)}\n${timeLine(b)}\n🔑 Код брони: <b>${b.code}</b>, покажи его администратору\n\nМесто держим 15 минут после начала. Если планы поменялись, отмени бронь в приложении, чтобы место досталось другим.`;
+  if (kind === 'confirmed') return `✅ <b>Бронь подтверждена</b>\n\n${seatLine(b)}\n${timeLine(b)}\n🔑 Код брони: <b>${b.code}</b>, покажи его администратору\n\nЖдём тебя в NEBULA!`;
   if (kind === 'cancelled') return `❌ <b>Клуб отменил бронь ${b.code}</b>\n\n${seatLine(b)}\n${timeLine(b)}\n\nЕсли это ошибка, позвони нам: ${CLUB.phone}`;
   return '';
 }
