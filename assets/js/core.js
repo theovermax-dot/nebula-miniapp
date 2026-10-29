@@ -160,12 +160,24 @@ export class UserError extends Error { constructor(msg) { super(msg); this.user 
 const fail = msg => { throw new UserError(msg); };
 
 // ---------- демо-данные ----------
+// Обновление демо-данных у тех, кто открыл старую версию
+export function migrate(db) {
+  if (!db || db.promoV === 3) return false;
+  const fresh = seedDB().promos;
+  for (const p of db.promos || []) {
+    const f = fresh.find(x => x.id === p.id);
+    if (f) Object.assign(p, { title: f.title, text: f.text, badge: f.badge });
+  }
+  db.promoV = 3;
+  return true;
+}
+
 export function seedDB(now = Date.now()) {
   const today = dayStart(now);
   const p = clubParts(now);
   const at = (dayOffset, h, m = 0) => today + dayOffset * 864e5 + (h * 60 + m) * 60e3;
   const nextWd = wd => { let i = 0; while (clubParts(today + i * 864e5).wd !== wd || i === 0) i++; return i; };
-  const db = { v: 1, demo: true, seats: {}, bookings: [], tournaments: [], promos: [], subs: {}, broadcasts: [], users: {}, auth: {}, createdAt: now, updatedAt: now };
+  const db = { v: 1, promoV: 3, demo: true, seats: {}, bookings: [], tournaments: [], promos: [], subs: {}, broadcasts: [], users: {}, auth: {}, createdAt: now, updatedAt: now };
   demoTick(db, now, true);
   db.seats[9] = { status: 'repair', note: 'Замена блока питания' };
   const mk = (seats, start, hours, name, phone, status, user) => {
@@ -194,9 +206,9 @@ export function seedDB(now = Date.now()) {
       regs: ['Гела', 'Nodar10', 'Misha FC', 'Saba', 'Giorgi D.', 'Темур', 'kakha', 'Levan', 'Mate', 'Vako', 'Otar', 'Beka'].map((t, i) => ({ id: rid(), team: t, captain: '', players: [], contact: '', uid: 'seed', createdAt: now - i * 18e5 })) },
   ];
   db.promos = [
-    { id: 'pr-bday', title: 'День рождения в клубе', text: 'В неделю дня рождения — 2 часа в подарок при брони от 3 часов. Покажите документ на ресепшене.', badge: '+2 часа', active: true, createdAt: now },
-    { id: 'pr-team', title: 'Командой дешевле', text: 'Бронь на 5 мест одной зоны — шестой час бесплатно для всей команды.', badge: 'Час в подарок', active: true, createdAt: now },
-    { id: 'pr-morning', title: 'Утро — лучшее время', text: 'Утренний пакет 08:00–13:00 на 500Hz за ₾24 вместо ₾50 почасовой.', badge: '−52%', active: true, createdAt: now },
+    { id: 'pr-bday', title: 'День рождения', text: 'Дарим 2 часа к любой брони от 3 часов. Действует неделю до и после дня рождения — возьмите с собой документ.', badge: '+2 часа', active: true, createdAt: now },
+    { id: 'pr-team', title: 'Команда из 5', text: 'Бронируете всю зону на пятерых — шестой час всей команде бесплатно.', badge: '+1 час', active: true, createdAt: now },
+    { id: 'pr-morning', title: 'Утро на 500 Гц', text: 'С 08:00 до 13:00 на станциях 500 Гц: 5 часов за ₾24 вместо ₾50.', badge: '−52%', active: true, createdAt: now },
   ];
   for (let i = 1; i <= 47; i++) db.subs['seed-' + i] = { name: '', at: now - i * 864e5 / 3, demo: true };
   return db;
@@ -458,6 +470,7 @@ export function normPhone(ph) {
   let d = String(ph || '').replace(/[^\d]/g, '');
   if (d.length === 9 && d.startsWith('5')) d = '995' + d; // местный грузинский мобильный
   if (d.length === 12 && d.startsWith('995')) return `+995 ${d.slice(3, 6)} ${d.slice(6, 8)} ${d.slice(8, 10)} ${d.slice(10)}`;
+  if (d.length === 11 && (d[0] === '7' || d[0] === '8')) return `+7 ${d.slice(1, 4)} ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}`;
   return d ? '+' + d : '';
 }
 function needAdmin(ctx) { if (!ctx.isAdmin) fail('Нужен доступ администратора'); }

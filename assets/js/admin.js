@@ -41,7 +41,7 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
         <div>
           <section class="sec" style="margin-top:28px">
             <div class="sec-head"><h2 class="h2">Дальше сегодня</h2><button class="link-btn" data-a="aTab" data-tab="bookings">Все брони${icon('chevron', 16)}</button></div>
-            ${nextToday.length ? `<div class="rows">${nextToday.map(b => bookingRow(b, v, true)).join('')}</div>` : `<div class="card empty"><b>Сегодня больше броней нет</b>Новые появятся здесь сразу после оформления.</div>`}
+            ${nextToday.length ? `<div class="ab-list">${nextToday.map(b => bookingRow(b, v, true)).join('')}</div>` : `<div class="card empty"><b>Сегодня больше броней нет</b>Новые появятся здесь сразу после оформления.</div>`}
           </section>
           ${repair.length ? `<section class="sec"><h2 class="h2" style="margin-bottom:12px">На ремонте</h2><div class="rows">${repair.map(s => `<button class="rowi" data-a="aSeat" data-seat="${s}"><span class="ic-wrap" style="color:var(--red)">${icon('wrench', 20)}</span><span class="grow"><span class="t">Место ${s} · ${zoneLabel(C.zoneOf(s))}</span><span class="s">${esc(v.seatsRaw?.[s]?.note || 'Без комментария')}</span></span>${icon('chevron', 18)}</button>`).join('')}</div></section>` : ''}
           <section class="sec">
@@ -99,6 +99,8 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
   };
 
   // ---------- БРОНИ ----------
+  const HUES = ['#22a7ff', '#2bd46a', '#f5a524', '#a26bff', '#ff6b8a', '#3dd6c6'];
+  const hueOf = s => HUES[[...String(s)].reduce((a, ch) => a + ch.charCodeAt(0), 0) % HUES.length];
   function bookingRow(b, v, compact = false) {
     const z = C.zoneOf(b.seats[0]);
     const pk = b.pkg && PACKAGES.find(p => p.id === b.pkg);
@@ -108,14 +110,31 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
     if (b.status === 'confirmed' && started && endOf(b) > v.now) acts.push(`<button class="btn btn-xs" data-a="aBk" data-id="${b.id}" data-st="arrived">Пришёл</button>`, `<button class="btn btn-ghost btn-xs" data-a="aBk" data-id="${b.id}" data-st="noshow">Не пришёл</button>`);
     if (b.status === 'confirmed' && !started) acts.push(`<button class="btn btn-ghost btn-xs" data-a="aBk" data-id="${b.id}" data-st="cancelled">Отменить</button>`);
     if (b.status === 'arrived') acts.push(`<button class="btn btn-ghost btn-xs" data-a="aBk" data-id="${b.id}" data-st="done">Завершить</button>`);
-    const contact = `<a class="btn btn-ghost btn-xs" href="${telHref(b.phone)}" aria-label="Позвонить">${icon('phone', 15)}</a>${b.tgUser ? `<a class="btn btn-ghost btn-xs" style="text-transform:none;letter-spacing:0" data-a="open" data-url="https://t.me/${esc(b.tgUser)}" href="https://t.me/${esc(b.tgUser)}">@${esc(b.tgUser)}</a>` : ''}`;
-    return `<div class="adm-b">
-      <div class="l1"><span class="nm">${esc(b.name)}</span><span class="pill ${b.status}">${STATUS[b.status]}</span></div>
-      <div class="l2"><span class="mono">${fmtTime(b.start)}–${fmtTime(endOf(b))}</span>${compact ? '' : ` · ${relDay(b.start)}`} · ${b.seats.length > 1 ? 'места' : 'место'} ${b.seats.join(', ')} · ${zoneLabel(z)}</div>
-      <div class="l2"><span class="fig" style="color:var(--ink)">${money(b.price)}</span>${pk ? ` · ${pk.name.toLowerCase()}` : ` · ${b.hours} ч`} · <span class="mono">${b.code}</span> · ${esc(b.phone)}${b.promo ? `<br><span class="cyan">Акция: ${esc(b.promo)}</span>` : ''}${b.comment ? `<br>«${esc(b.comment)}»` : ''}</div>
-      <div class="acts">${acts.join('')}${contact}</div>
-    </div>`;
+    const initials = esc(String(b.name).trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase());
+    return `<article class="ab ab-${b.status}">
+      <header class="ab-h">
+        <span class="ab-ava" style="--h:${hueOf(b.name)}">${initials}</span>
+        <div class="ab-who"><b>${esc(b.name)}</b><a href="${telHref(b.phone)}">${esc(C.normPhone(b.phone) || b.phone)}</a></div>
+        <span class="pill ${b.status}">${STATUS[b.status]}</span>
+      </header>
+      <div class="ab-facts">
+        <div><span>Когда</span><b>${fmtTime(b.start)}–${fmtTime(endOf(b))}</b><em>${relDay(b.start)}</em></div>
+        <div><span>${b.seats.length > 1 ? 'Места' : 'Место'}</span><b>${b.seats.join(', ')}</b><em>${zoneLabel(z)} ${z.hz}Hz</em></div>
+        <div><span>Сумма</span><b>${money(b.price)}</b><em>${pk ? pkgLabel(pk) : b.hours + ' ч по часам'}</em></div>
+        <div><span>Код</span><b class="mono">${b.code}</b><em>${relDay(b.createdAt) === 'Сегодня' ? 'создана в ' + fmtTime(b.createdAt) : 'создана ' + fmtDay(b.createdAt)}</em></div>
+      </div>
+      ${b.promo ? `<div class="ab-note ab-promo">${icon('tag', 15)}<span><b>Акция:</b> ${esc(b.promo)}</span></div>` : ''}
+      ${b.comment ? `<div class="ab-note">${icon('edit', 15)}<span><b>Комментарий:</b> ${esc(b.comment)}</span></div>` : ''}
+      <footer class="ab-f">
+        <div class="ab-acts">${acts.join('')}</div>
+        <div class="ab-contact">
+          <a class="icon-btn" href="${telHref(b.phone)}" aria-label="Позвонить ${esc(b.name)}" title="Позвонить">${icon('phone', 18)}</a>
+          ${b.tgUser ? `<a class="icon-btn" data-a="open" data-url="https://t.me/${esc(b.tgUser)}" href="https://t.me/${esc(b.tgUser)}" aria-label="Написать в Telegram" title="@${esc(b.tgUser)}">${icon('send', 18)}</a>` : ''}
+        </div>
+      </footer>
+    </article>`;
   }
+  const pkgLabel = pk => `пакет «${{ p3: '3 часа', p5: '5 часов', morning: 'Утро', night: 'Ночь' }[pk.id]}»`;
   function bookings(v) {
     const now = v.now;
     const F = {
@@ -135,7 +154,7 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
       <div class="seg" role="tablist" data-keep="bf">
         ${[['pending', 'Ждут'], ['today', 'Сегодня'], ['upcoming', 'Предстоящие'], ['archive', 'Архив']].map(([k, l]) => `<button class="${A.filter === k ? 'on' : ''}" data-a="aFilter" data-f="${k}" role="tab" aria-selected="${A.filter === k}">${l}${k !== 'archive' ? ` <span class="dim">${counts[k]}</span>` : ''}</button>`).join('')}
       </div>
-      ${list.length ? Object.entries(groups).map(([day, arr]) => `<h3 class="group-t">${day}</h3><div class="rows">${arr.map(b => bookingRow(b, v, true)).join('')}</div>`).join('')
+      ${list.length ? Object.entries(groups).map(([day, arr]) => `<h3 class="group-t">${day}</h3><div class="ab-list">${arr.map(b => bookingRow(b, v, true)).join('')}</div>`).join('')
         : `<div class="card empty" style="margin-top:16px"><b>${A.filter === 'pending' ? 'Все брони подтверждены' : 'Здесь пусто'}</b>${A.filter === 'pending' ? 'Новые заявки появятся здесь и придут уведомлением в Telegram.' : ''}</div>`}`;
   }
   H.aFilter = el => { A.filter = el.dataset.f; haptic.tap(); render(); };

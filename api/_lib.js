@@ -1,6 +1,6 @@
 // Общие помощники для serverless-функций Vercel. Файл с "_" не становится роутом.
 import crypto from 'node:crypto';
-import { seedDB, demoTick } from '../assets/js/core.js';
+import { seedDB, demoTick, migrate } from '../assets/js/core.js';
 
 const KEY = 'nebula:db:v1';
 const REDIS_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
@@ -22,7 +22,7 @@ export async function loadDB() {
   const raw = await redis(['GET', KEY]);
   let db = raw ? JSON.parse(raw) : null;
   if (!db) { db = seedDB(); await saveDB(db); }
-  if (demoTick(db)) await saveDB(db);
+  if (migrate(db) | demoTick(db)) await saveDB(db);
   return db;
 }
 export const saveDB = db => redis(['SET', KEY, JSON.stringify(db)]);

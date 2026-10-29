@@ -184,7 +184,7 @@ function home(v) {
   <div style="margin-top:12px"><button class="btn" data-a="go" data-tab="book">${icon('seat', 18)}Забронировать место</button></div>
   <div class="facts">
     <div><b>500<em>Hz</em></b><span>мониторы</span></div>
-    <div><b>5070</b><span>RTX видеокарты</span></div>
+    <div><b>RTX 5070</b><span>видеокарты</span></div>
     <div><b>₾${fromP}</b><span>от / час</span></div>
   </div>
 
@@ -438,7 +438,7 @@ H.bkNext = () => {
       <div class="opts" role="radiogroup" aria-label="Тариф">${opts.map(o => `<button type="button" class="opt ${o.hours === S.bk.hours ? 'on' : ''}" data-hours="${o.hours}" role="radio" aria-checked="${o.hours === S.bk.hours}"><span class="radio"></span><span class="grow"><b>${o.title}</b><span>${o.sub}</span></span><span class="opt-p">${money(o.price)}</span></button>`).join('')}</div>` : ''}
       ${v.promos.length ? `<h3 class="cf-t">Акция</h3>
       <div class="promo-chips">${['', ...v.promos.map(p => p.title)].map(t => `<button type="button" class="chip ${st.promo === t ? 'on' : ''}" data-promo="${esc(t)}">${t ? esc(t) : 'Без акции'}</button>`).join('')}</div>
-      ${st.promo ? `<p class="cf-note">${esc(v.promos.find(p => p.title === st.promo)?.text || '')} Скидку по акции администратор применит в клубе.</p>` : ''}` : ''}
+      ${st.promo ? (() => { const pr = v.promos.find(p => p.title === st.promo); return `<div class="cf-promo">${pr?.badge ? `<span class="cf-badge">${esc(pr.badge)}</span>` : ''}<p>${esc(pr?.text || '')}</p><small>${icon('check', 13)}Скидку учтём при оплате в клубе</small></div>`; })() : ''}` : ''}
       <form id="bkForm" novalidate>
         <div class="who" style="margin-top:18px">${avatarHTML(v, 44)}<div class="grow"><b>${esc(v.profile?.name || '')}</b><span>${esc(v.profile?.phone || '')}</span></div></div>
         <label class="field"><span>Комментарий <span class="dim" style="font-weight:500">— необязательно</span></span><input name="comment" placeholder="Например: нужен геймпад"></label>
@@ -663,11 +663,17 @@ export const STATUS = { new: 'Ждёт подтверждения', confirmed: '
 function bookingCard(b) {
   const z = C.zoneOf(b.seats[0]);
   const pk = b.pkg && PACKAGES.find(p => p.id === b.pkg);
-  return `<article class="card bk">
-    <div class="bk-top"><span class="bk-when">${relDay(b.start)}, ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)}</span><span class="pill ${b.status}">${STATUS[b.status]}</span></div>
-    <div class="bk-meta">${b.seats.length > 1 ? 'Места' : 'Место'} ${b.seats.join(', ')} · ${zoneLabel(z)} ${z.hz}Hz · ${pk ? pk.name.toLowerCase() : b.hours + ' ч'}</div>
-    <div class="bk-foot"><span><span class="mono cyan" style="font-size:15px;font-weight:600">${b.code}</span> <span class="fig" style="margin-left:8px">${money(b.price)}</span></span>
-    ${['new', 'confirmed'].includes(b.status) ? `<button class="btn btn-ghost btn-xs" data-a="cancelBk" data-id="${b.id}">Отменить</button>` : ''}</div>
+  const p = clubParts(b.start);
+  const rel = relDay(b.start);
+  return `<article class="bkc">
+    <div class="bkc-date"><b>${p.d}</b><span>${rel === 'Сегодня' || rel === 'Завтра' ? rel : C.wdShort(b.start) + ', ' + MON_SHORT[p.m]}</span></div>
+    <div class="bkc-main">
+      <div class="bkc-r1"><span class="bkc-time">${fmtTime(b.start)} – ${fmtTime(b.start + b.hours * 3600e3)}</span><span class="pill ${b.status}">${STATUS[b.status]}</span></div>
+      <div class="bkc-meta">${b.seats.length > 1 ? 'Места' : 'Место'} <b>${b.seats.join(', ')}</b> · ${zoneLabel(z)} ${z.hz}Hz · ${pk ? pkgLabel(pk) : b.hours + ' ' + C.plural(b.hours, 'час', 'часа', 'часов')}</div>
+      ${b.promo ? `<div class="bkc-meta">${icon('tag', 13)} ${esc(b.promo)}</div>` : ''}
+      <div class="bkc-foot"><span class="bkc-code">${b.code}</span><span class="bkc-price">${money(b.price)}</span>
+      ${['new', 'confirmed'].includes(b.status) ? `<button class="btn btn-ghost btn-xs" data-a="cancelBk" data-id="${b.id}">Отменить</button>` : ''}</div>
+    </div>
   </article>`;
 }
 H.editName = () => {
