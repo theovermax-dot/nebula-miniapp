@@ -39,6 +39,11 @@ export default async function handler(req, res) {
       const words = { confirmed: '✅ Бронь подтверждена', cancelled: '❌ Бронь отменена клубом' }[b.status];
       if (words) await tg('sendMessage', { chat_id: b.uid.slice(3), text: `${words}: ${b.code}, места ${b.seats.join(', ')}` });
     }
+    // победителю — сообщение о призе
+    if (result.notify === 'winner' && result.reg?.uid?.startsWith('tg-')) {
+      const { reg, tournament: t } = result;
+      await tg('sendMessage', { chat_id: reg.uid.slice(3), text: `🏆 ${reg.winner.place} место в турнире «${t.title}»!${reg.winner.hours ? `\n\nНа ваш аккаунт начислено ${reg.winner.hours} ч игры — спишутся при следующей брони.` : ''}${t.prizeComment ? '\n\n' + t.prizeComment : ''}` });
+    }
     // рассылка подписчикам
     if (result.notify === 'broadcast') {
       let sent = 0;

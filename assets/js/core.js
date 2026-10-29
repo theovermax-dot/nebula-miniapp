@@ -162,13 +162,18 @@ const fail = msg => { throw new UserError(msg); };
 // ---------- демо-данные ----------
 // Обновление демо-данных у тех, кто открыл старую версию
 export function migrate(db) {
-  if (!db || db.promoV === 3) return false;
+  if (!db || db.promoV === 4) return false;
   const fresh = seedDB().promos;
   for (const p of db.promos || []) {
     const f = fresh.find(x => x.id === p.id);
     if (f) Object.assign(p, { title: f.title, text: f.text, badge: f.badge });
   }
-  db.promoV = 3;
+  db.promoV = 4;
+  for (const t of db.tournaments || []) {
+    const f = seedDB().tournaments.find(x => x.id === t.id);
+    if (t.prizeHours == null) t.prizeHours = f?.prizeHours || 0;
+    if (t.prizeComment == null) t.prizeComment = f?.prizeComment || '';
+  }
   return true;
 }
 
@@ -177,7 +182,7 @@ export function seedDB(now = Date.now()) {
   const p = clubParts(now);
   const at = (dayOffset, h, m = 0) => today + dayOffset * 864e5 + (h * 60 + m) * 60e3;
   const nextWd = wd => { let i = 0; while (clubParts(today + i * 864e5).wd !== wd || i === 0) i++; return i; };
-  const db = { v: 1, promoV: 3, demo: true, seats: {}, bookings: [], tournaments: [], promos: [], subs: {}, broadcasts: [], users: {}, auth: {}, createdAt: now, updatedAt: now };
+  const db = { v: 1, promoV: 4, demo: true, seats: {}, bookings: [], tournaments: [], promos: [], subs: {}, broadcasts: [], users: {}, auth: {}, createdAt: now, updatedAt: now };
   demoTick(db, now, true);
   db.seats[9] = { status: 'repair', note: 'Замена блока питания' };
   const mk = (seats, start, hours, name, phone, status, user) => {
@@ -195,13 +200,13 @@ export function seedDB(now = Date.now()) {
 
   const sat = nextWd(6), fri = nextWd(5);
   db.tournaments = [
-    { id: 't-cs', game: 'Counter-Strike 2', title: 'Wingman Cup', format: '2 × 2', teamSize: 2, start: at(sat, 18), entry: 20, entryUnit: 'с команды', prize: 600, prizeNote: '₾400 · ₾150 · ₾50', slots: 16, open: true, hue: 'amber',
+    { id: 't-cs', game: 'Counter-Strike 2', title: 'Wingman Cup', format: '2 × 2', teamSize: 2, start: at(sat, 18), entry: 20, entryUnit: 'с команды', prize: 600, prizeNote: '₾400 · ₾150 · ₾50', prizeHours: 10, prizeComment: 'Победители получают кубок и мерч NEBULA.', slots: 16, open: true, hue: 'amber',
       about: 'Формат Wingman, карты Nuke, Inferno, Vertigo. Single elimination, финал — Bo3. Играем на станциях Ultra и Pro.',
       regs: ['Batumi Five', 'Old Boulevard', 'Adjara Aim', 'noscope.ge', 'Sea Breeze', 'Kobuleti Kings', 'Clutch or Kick', 'Rustaveli 2', 'Late Peek'].map((t, i) => ({ id: rid(), team: t, captain: ['@lasha', '@gio_cs', '@tornike', '@noscope', '@mariam', '@dato', '@luka_aim', '@irakli', '@zura'][i], players: [], contact: '', uid: 'seed', createdAt: now - i * 36e5 })) },
-    { id: 't-val', game: 'Valorant', title: 'Night Ops 5×5', format: '5 × 5', teamSize: 5, start: at(fri, 21), entry: 50, entryUnit: 'с команды', prize: 1000, prizeNote: '₾700 · ₾300', slots: 8, open: true, hue: 'red',
+    { id: 't-val', game: 'Valorant', title: 'Night Ops 5×5', format: '5 × 5', teamSize: 5, start: at(fri, 21), entry: 50, entryUnit: 'с команды', prize: 1000, prizeNote: '₾700 · ₾300', prizeHours: 0, prizeComment: 'После финала — бесплатная ночь в клубе для команды-победителя.', slots: 8, open: true, hue: 'red',
       about: 'Ночной турнир на 8 команд. Групповой этап Bo1, плей-офф Bo3. После финала — бесплатная ночь в клубе для победителей.',
       regs: ['Phantom Batumi', 'Spike Rush', 'Black Sea Five', 'Ascent Gang'].map((t, i) => ({ id: rid(), team: t, captain: ['@ninja_ge', '@sova', '@ketevan', '@ascent'][i], players: [], contact: '', uid: 'seed', createdAt: now - i * 72e5 })) },
-    { id: 't-fc', game: 'EA SPORTS FC 26', title: 'Кубок Аджарии 1×1', format: '1 × 1', teamSize: 1, start: at(sat + 7, 15), entry: 10, entryUnit: 'с игрока', prize: 300, prizeNote: '₾200 · ₾100', slots: 32, open: true, hue: 'green',
+    { id: 't-fc', game: 'EA SPORTS FC 26', title: 'Кубок Аджарии 1×1', format: '1 × 1', teamSize: 1, start: at(sat + 7, 15), entry: 10, entryUnit: 'с игрока', prize: 300, prizeNote: '₾200 · ₾100', prizeHours: 5, prizeComment: '', slots: 32, open: true, hue: 'green',
       about: 'Ultimate-составы запрещены, только клубы. Матчи по 6 минут, ничья — пенальти. Свой геймпад можно принести.',
       regs: ['Гела', 'Nodar10', 'Misha FC', 'Saba', 'Giorgi D.', 'Темур', 'kakha', 'Levan', 'Mate', 'Vako', 'Otar', 'Beka'].map((t, i) => ({ id: rid(), team: t, captain: '', players: [], contact: '', uid: 'seed', createdAt: now - i * 18e5 })) },
   ];
@@ -245,6 +250,7 @@ export function publicView(db, ctx = {}) {
     tournaments: db.tournaments.map(t => ({
       ...t, regs: undefined, regCount: t.regs.length,
       teams: t.regs.map(r => r.team),
+      winners: t.regs.filter(r => r.winner).sort((a, b) => a.winner.place - b.winner.place).map(r => r.team),
       myReg: t.regs.find(r => uid && r.uid === uid) || null,
     })).sort((a, b) => a.start - b.start),
     promos: db.promos.filter(p => p.active || ctx.isAdmin),
@@ -288,7 +294,14 @@ export const actions = {
       if (c) fail(c.kind === 'repair' ? `Место ${s} на ремонте` : `Место ${s} уже занято на ${fmtTime(Math.max(c.start, start))}. Выберите другое`);
     }
     const q = quote(seats, start, hours);
-    const b = { id: rid(), code: code(), seats, start, hours, pkg: q.pkg, price: q.price, hourly: q.hourly, name, phone, verified: !!prof?.verified, tgUser: clean(ctx.username || prof?.tgUser, 40), uid: ctx.uid, comment: clean(p.comment, 200), promo: clean(p.promo, 60), status: 'new', createdAt: now };
+    // бонусные часы (например, приз за турнир): списываем по обычному тарифу первого места
+    let bonusUsed = 0, bonusOff = 0;
+    if (p.useBonus && prof?.bonusHours > 0) {
+      bonusUsed = Math.min(prof.bonusHours, hours);
+      bonusOff = Math.min(q.price, bonusUsed * zoneOf(seats[0]).price[isWeekend(start) ? 1 : 0]);
+      prof.bonusHours -= bonusUsed;
+    }
+    const b = { id: rid(), code: code(), seats, start, hours, pkg: q.pkg, price: q.price - bonusOff, hourly: q.hourly, bonusUsed, bonusOff, name, phone, verified: !!prof?.verified, tgUser: clean(ctx.username || prof?.tgUser, 40), uid: ctx.uid, comment: clean(p.comment, 200), promo: clean(p.promo, 60), status: 'new', createdAt: now };
     db.bookings.push(b);
     return { booking: b, notify: 'booking' };
   },
@@ -298,6 +311,7 @@ export const actions = {
     if (b.uid !== ctx.uid && !ctx.isAdmin) fail('Это не ваша бронь');
     if (!['new', 'confirmed'].includes(b.status)) fail('Эту бронь уже нельзя отменить');
     b.status = 'cancelled'; b.cancelledBy = ctx.isAdmin && b.uid !== ctx.uid ? 'admin' : 'client';
+    if (b.bonusUsed && db.users?.[b.uid]) { db.users[b.uid].bonusHours = (db.users[b.uid].bonusHours || 0) + b.bonusUsed; b.bonusUsed = 0; }
     return { booking: b, notify: 'cancel' };
   },
   registerTournament(db, p, ctx) {
@@ -425,7 +439,9 @@ export const actions = {
     if (!b) fail('Бронь не найдена');
     if (!['new', 'confirmed', 'arrived', 'done', 'cancelled', 'noshow'].includes(p.status)) fail('Неизвестный статус');
     b.status = p.status;
-    if (p.status === 'cancelled') b.cancelledBy = 'admin';
+    if (p.status === 'cancelled') { b.cancelledBy = 'admin';
+    if (b.bonusUsed && db.users?.[b.uid]) { db.users[b.uid].bonusHours = (db.users[b.uid].bonusHours || 0) + b.bonusUsed; b.bonusUsed = 0; }
+    }
     return { booking: b, notify: 'status' };
   },
   saveTournament(db, p, ctx) {
@@ -433,7 +449,8 @@ export const actions = {
     const data = {
       game: clean(p.game, 40), title: clean(p.title, 60), format: clean(p.format, 20), teamSize: Math.max(1, Math.min(6, Number(p.teamSize) || 1)),
       start: Number(p.start), entry: Math.max(0, Number(p.entry) || 0), entryUnit: Number(p.teamSize) > 1 ? 'с команды' : 'с игрока',
-      prize: Math.max(0, Number(p.prize) || 0), prizeNote: clean(p.prizeNote, 60), slots: Math.max(2, Math.min(128, Number(p.slots) || 16)),
+      prize: Math.max(0, Number(p.prize) || 0), prizeNote: clean(p.prizeNote, 60),
+      prizeHours: Math.max(0, Math.min(100, Math.round(Number(p.prizeHours) || 0))), prizeComment: clean(p.prizeComment, 200), slots: Math.max(2, Math.min(128, Number(p.slots) || 16)),
       about: clean(p.about, 600), hue: ['amber', 'red', 'green', 'blue'].includes(p.hue) ? p.hue : 'blue',
     };
     if (!data.game || !data.title) fail('Укажите игру и название');
@@ -445,6 +462,20 @@ export const actions = {
   },
   toggleTournament(db, p, ctx) { needAdmin(ctx); const t = db.tournaments.find(x => x.id === p.id); if (!t) fail('Турнир не найден'); t.open = !t.open; return {}; },
   deleteTournament(db, p, ctx) { needAdmin(ctx); db.tournaments = db.tournaments.filter(x => x.id !== p.id); return {}; },
+  awardWinner(db, p, ctx) {
+    needAdmin(ctx);
+    const t = db.tournaments.find(x => x.id === p.id);
+    if (!t) fail('Турнир не найден');
+    const r = t.regs.find(x => x.id === p.regId);
+    if (!r) fail('Участник не найден');
+    if (r.winner) fail('Этот участник уже награждён');
+    const place = Math.max(1, Math.min(3, Number(p.place) || 1));
+    const hours = Math.max(0, Math.min(100, Math.round(Number(p.hours) || 0)));
+    const u = db.users?.[r.uid];
+    if (hours && u) u.bonusHours = (u.bonusHours || 0) + hours;
+    r.winner = { place, hours: u ? hours : 0, at: ctx.now || Date.now() };
+    return { reg: r, tournament: t, credited: !!(hours && u), notify: 'winner' };
+  },
   removeReg(db, p, ctx) { needAdmin(ctx); const t = db.tournaments.find(x => x.id === p.id); if (t) t.regs = t.regs.filter(r => r.id !== p.regId); return {}; },
   savePromo(db, p, ctx) {
     needAdmin(ctx);

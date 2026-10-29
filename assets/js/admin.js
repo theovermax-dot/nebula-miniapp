@@ -123,6 +123,7 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
         <div><span>Сумма</span><b>${money(b.price)}</b><em>${pk ? pkgLabel(pk) : b.hours + ' ч по часам'}</em></div>
         <div><span>Код</span><b class="mono">${b.code}</b><em>${relDay(b.createdAt) === 'Сегодня' ? 'создана в ' + fmtTime(b.createdAt) : 'создана ' + fmtDay(b.createdAt)}</em></div>
       </div>
+      ${b.bonusUsed ? `<div class="ab-note ab-promo">${icon('trophy', 15)}<span><b>Бонус:</b> списано ${b.bonusUsed} ч (−${money(b.bonusOff)})</span></div>` : ''}
       ${b.promo ? `<div class="ab-note ab-promo">${icon('tag', 15)}<span><b>Акция:</b> ${esc(b.promo)}</span></div>` : ''}
       ${b.comment ? `<div class="ab-note">${icon('edit', 15)}<span><b>Комментарий:</b> ${esc(b.comment)}</span></div>` : ''}
       <footer class="ab-f">
@@ -152,7 +153,7 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
     return `<h1 class="h1">Брони</h1>
       <p class="sub">Впереди ${counts.upcoming} ${C.plural(counts.upcoming, 'бронь', 'брони', 'броней')} на ${money(revenue)}</p>
       <div class="seg" role="tablist" data-keep="bf">
-        ${[['pending', 'Ждут'], ['today', 'Сегодня'], ['upcoming', 'Предстоящие'], ['archive', 'Архив']].map(([k, l]) => `<button class="${A.filter === k ? 'on' : ''}" data-a="aFilter" data-f="${k}" role="tab" aria-selected="${A.filter === k}">${l}${k !== 'archive' ? ` <span class="dim">${counts[k]}</span>` : ''}</button>`).join('')}
+        ${[['pending', 'Ждут'], ['today', 'Сегодня'], ['upcoming', 'Впереди'], ['archive', 'Архив']].map(([k, l]) => `<button class="${A.filter === k ? 'on' : ''}" data-a="aFilter" data-f="${k}" role="tab" aria-selected="${A.filter === k}">${l}${k !== 'archive' ? ` <span class="dim">${counts[k]}</span>` : ''}</button>`).join('')}
       </div>
       ${list.length ? Object.entries(groups).map(([day, arr]) => `<h3 class="group-t">${day}</h3><div class="ab-list">${arr.map(b => bookingRow(b, v, true)).join('')}</div>`).join('')
         : `<div class="card empty" style="margin-top:16px"><b>${A.filter === 'pending' ? 'Все брони подтверждены' : 'Здесь пусто'}</b>${A.filter === 'pending' ? 'Новые заявки появятся здесь и придут уведомлением в Telegram.' : ''}</div>`}`;
@@ -189,19 +190,43 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
     const t = store.view.tournamentsFull.find(x => x.id === el.dataset.id); if (!t) return;
     const s = sheet({
       title: `${t.title} · ${t.regs.length}/${t.slots}`,
-      body: t.regs.length ? t.regs.map((r, i) => `<div class="reg-row"><span class="dim mono" style="width:22px">${i + 1}.</span><span class="grow"><b>${esc(r.team)}</b><span class="s">${[r.captain, r.contact, r.players?.length ? r.players.join(', ') : ''].filter(Boolean).map(esc).join(' · ') || 'без контакта'}</span></span><button class="icon-btn" data-rm="${r.id}" aria-label="Удалить участника">${icon('trash', 18)}</button></div>`).join('')
+      body: t.regs.length ? `${t.prizeHours || t.prize || t.prizeComment ? `<div class="prize-sum">${icon('trophy', 16)}<span>${[t.prize ? '₾' + t.prize : '', t.prizeHours ? `+${t.prizeHours} ч на аккаунт` : '', t.prizeComment].filter(Boolean).map(esc).join(' · ')}</span></div>` : ''}` + t.regs.map((r, i) => `<div class="reg-row"><span class="dim mono" style="width:22px">${i + 1}.</span><span class="grow"><b>${esc(r.team)}</b>${r.winner ? ` <span class="win-tag">${icon('trophy', 12)}${r.winner.place} место${r.winner.hours ? ` · +${r.winner.hours} ч` : ''}</span>` : ''}<span class="s">${[r.captain, r.contact, r.players?.length ? r.players.join(', ') : ''].filter(Boolean).map(esc).join(' · ') || 'без контакта'}</span></span>${r.winner ? '' : `<button class="btn btn-ghost btn-xs" data-win="${r.id}">${icon('trophy', 14)}Наградить</button>`}<button class="icon-btn" data-rm="${r.id}" aria-label="Удалить участника">${icon('trash', 18)}</button></div>`).join('')
         : '<div class="empty"><b>Пока никто не записался</b>Поделитесь турниром в Instagram и TikTok клуба.</div>',
     });
     s.body.addEventListener('click', async e => {
+      const w = e.target.closest('[data-win]');
+      if (w) return awardSheet(t, t.regs.find(r => r.id === w.dataset.win), s);
       const rm = e.target.closest('[data-rm]'); if (!rm) return;
       if (!(await confirmSheet({ title: 'Убрать участника?', text: 'Его место станет свободным.', ok: 'Убрать', danger: true }))) return;
       try { await store.act('removeReg', { id: t.id, regId: rm.dataset.rm }); rm.closest('.reg-row').remove(); toast('Участник удалён'); } catch (err) { toast(err.message, 'err'); }
     });
   };
+  function awardSheet(t, r, parent) {
+    let place = 1;
+    const a = sheet({ title: `Наградить «${r.team}»`, body: '' });
+    const draw = () => {
+      a.body.innerHTML = `
+        <div class="field"><span>Место</span><div class="seg">${[1, 2, 3].map(n => `<button type="button" class="${place === n ? 'on' : ''}" data-place="${n}">${n} место</button>`).join('')}</div></div>
+        <label class="field"><span>Начислить часов на аккаунт</span><input name="hours" type="number" inputmode="numeric" min="0" max="100" value="${place === 1 ? (t.prizeHours || 0) : 0}"><small>Часы спишутся при следующей брони гостя. 0 — без часов.</small></label>
+        <button class="btn" data-go>${icon('trophy', 17)}Наградить</button>`;
+    };
+    draw();
+    a.body.addEventListener('click', async e => {
+      const pl = e.target.closest('[data-place]'); if (pl) { place = Number(pl.dataset.place); draw(); return; }
+      const go = e.target.closest('[data-go]'); if (!go) return;
+      await busy(go, async () => {
+        try {
+          const res = await store.act('awardWinner', { id: t.id, regId: r.id, place, hours: a.body.querySelector('[name=hours]').value });
+          haptic.ok(); a.close(); parent.close();
+          toast(res.credited ? `Готово: ${place} место, часы начислены` : `Готово: ${place} место${Number(a.body.querySelector('[name=hours]')?.value) ? ' — у гостя нет аккаунта, часы не начислены' : ''}`, 'ok');
+        } catch (err) { toast(err.message, 'err'); }
+      });
+    });
+  }
   const GAMES = ['Counter-Strike 2', 'Valorant', 'Dota 2', 'EA SPORTS FC 26', 'Fortnite', 'League of Legends', 'PUBG'];
   H.aTourEdit = el => {
     const t = el.dataset.id ? store.view.tournamentsFull.find(x => x.id === el.dataset.id) : null;
-    const def = t || { game: 'Counter-Strike 2', title: '', format: '5 × 5', teamSize: 5, start: dayStart(Date.now()) + 7 * 864e5 + 18 * 3600e3, entry: 0, prize: 0, prizeNote: '', slots: 16, about: '', hue: 'amber' };
+    const def = t || { game: 'Counter-Strike 2', title: '', format: '5 × 5', teamSize: 5, start: dayStart(Date.now()) + 7 * 864e5 + 18 * 3600e3, entry: 0, prize: 0, prizeNote: '', prizeHours: 0, prizeComment: '', slots: 16, about: '', hue: 'amber' };
     const s = sheet({
       title: t ? 'Изменить турнир' : 'Новый турнир', full: true,
       body: `<form id="tForm" novalidate>
@@ -216,10 +241,16 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
           <label class="field"><span>Взнос, ₾</span><input name="entry" type="number" inputmode="numeric" min="0" value="${def.entry}"></label>
           <label class="field"><span>Мест</span><input name="slots" type="number" inputmode="numeric" min="2" value="${def.slots}"></label>
         </div>
-        <div class="grid2">
-          <label class="field"><span>Призовой, ₾</span><input name="prize" type="number" inputmode="numeric" min="0" value="${def.prize}"></label>
-          <label class="field"><span>Распределение</span><input name="prizeNote" value="${esc(def.prizeNote)}" placeholder="₾400 · ₾150 · ₾50"></label>
-        </div>
+        <fieldset class="prize-box">
+          <legend>Призы</legend>
+          <div class="grid2">
+            <label class="field"><span>Денежный фонд, ₾</span><input name="prize" type="number" inputmode="numeric" min="0" value="${def.prize || 0}"></label>
+            <label class="field"><span>Часы на аккаунт</span><input name="prizeHours" type="number" inputmode="numeric" min="0" max="100" value="${def.prizeHours || 0}"></label>
+          </div>
+          <label class="field"><span>Распределение по местам</span><input name="prizeNote" value="${esc(def.prizeNote || '')}" placeholder="₾400 · ₾150 · ₾50"></label>
+          <label class="field" style="margin-bottom:4px"><span>Что ещё получат победители</span><textarea name="prizeComment" rows="2" placeholder="Например: кубок, мерч NEBULA, бесплатная ночь в клубе">${esc(def.prizeComment || '')}</textarea></label>
+          <small class="dim" style="display:block;font-size:12.5px">Часы начисляются кнопкой «Наградить» в списке участников — на аккаунт того, кто регистрировал команду. Гость спишет их при следующей брони.</small>
+        </fieldset>
         <label class="field"><span>Описание и правила</span><textarea name="about" placeholder="Карты, формат матчей, что взять с собой">${esc(def.about)}</textarea></label>
         <div class="field"><span>Цвет карточки</span><div class="seg" id="hueSeg">${[['amber', 'Янтарь'], ['red', 'Красный'], ['green', 'Зелёный'], ['blue', 'Голубой']].map(([k, l]) => `<button type="button" data-hue="${k}" class="${def.hue === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
         <button class="btn" type="submit" data-a="aTourSave" data-id="${t?.id || ''}">${t ? 'Сохранить' : 'Опубликовать турнир'}</button>

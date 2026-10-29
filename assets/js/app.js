@@ -256,6 +256,8 @@ H.go = el => { closeAllSheets(); go(el.dataset.tab); };
 
 // ---------- БРОНЬ ----------
 function book(v) {
+  const min = minSlotFor(S.bk.day);
+  if (isToday(S.bk.day) && S.bk.startMin < min) { if (min > 23 * 60 + 30) { S.bk.day += 864e5; S.bk.startMin = 12 * 60; } else S.bk.startMin = min; }
   return S.bk.step === 'seat' ? bookSeat(v) : bookWhen(v);
 }
 const MON_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -421,7 +423,7 @@ function tariffOptions(seats) {
 }
 H.bkNext = () => {
   const v = store.view;
-  const st = { promo: '' };
+  const st = { promo: '', bonus: (v.profile?.bonusHours || 0) > 0 };
   haptic.light();
   const s = sheet({ title: 'Подтверждение', body: '' });
   const draw = () => {
@@ -442,8 +444,14 @@ H.bkNext = () => {
       <form id="bkForm" novalidate>
         <div class="who" style="margin-top:18px">${avatarHTML(v, 44)}<div class="grow"><b>${esc(v.profile?.name || '')}</b><span>${esc(v.profile?.phone || '')}</span></div></div>
         <label class="field"><span>Комментарий <span class="dim" style="font-weight:500">— необязательно</span></span><input name="comment" placeholder="Например: нужен геймпад"></label>
-        <input type="hidden" name="promo" value="${esc(st.promo)}">
-        <div class="cf-total"><span>Итого</span><span>${q.saving > 0 ? `<s>${money(q.hourly)}</s>` : ''}${money(q.price)}</span></div>
+        <input type="hidden" name="promo" value="${esc(st.promo)}"><input type="hidden" name="useBonus" value="${st.bonus ? '1' : ''}">
+        ${(() => {
+          const bh = v.profile?.bonusHours || 0; if (!bh) return '';
+          const use = Math.min(bh, S.bk.hours), off = Math.min(q.price, use * C.zoneOf(seats[0]).price[C.isWeekend(bkStart()) ? 1 : 0]);
+          st.off = st.bonus ? off : 0;
+          return `<button type="button" class="bonus-opt ${st.bonus ? 'on' : ''}" data-bonus role="switch" aria-checked="${st.bonus}"><span class="grow"><b>Списать бонусные часы</b><span>${use} из ${bh} ч · −${money(off)}</span></span><span class="switch ${st.bonus ? 'on' : ''}"></span></button>`;
+        })()}
+        <div class="cf-total"><span>Итого</span><span>${q.saving > 0 || st.off ? `<s>${money(q.hourly)}</s>` : ''}${money(q.price - (st.off || 0))}</span></div>
         <button class="btn" type="submit" data-a="bkSubmit">Забронировать</button>
         <p class="pay-note" style="margin:12px 0 0">${icon('clock', 16)}<span>Оплата в клубе. Место держим 15 минут после начала брони.</span></p>
       </form>`;
@@ -454,6 +462,7 @@ H.bkNext = () => {
     if (o) { S.bk.hours = Number(o.dataset.hours); haptic.tap(); draw(); render(); return; }
     const p = e.target.closest('[data-promo]');
     if (p) { st.promo = p.dataset.promo; haptic.tap(); draw(); }
+    if (e.target.closest('[data-bonus]')) { st.bonus = !st.bonus; haptic.tap(); draw(); }
   });
 };
 H.askContact = el => {
@@ -510,7 +519,7 @@ function tourCard(t, v) {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span class="game"><i></i>${esc(t.game)} · ${esc(t.format)}</span><span class="countdown">${untilText(t.start, v.now)}</span></div>
       <h3>${esc(t.title)}</h3>
       <div class="tour-meta">
-        <div><b class="cyan">₾${t.prize}</b><span>призовой</span></div>
+        <div>${t.prize ? `<b class="cyan">₾${t.prize}</b><span>${t.prizeHours ? `+ ${t.prizeHours} ч в подарок` : 'призовой'}</span>` : t.prizeHours ? `<b class="cyan">${t.prizeHours} ч</b><span>в подарок</span>` : `<b class="cyan">${icon('trophy', 16)}</b><span>призы</span>`}</div>
         <div><b>${fmtDay(t.start).split(', ')[1]}</b><span>${C.wdShort(t.start)}, ${fmtTime(t.start)}</span></div>
         <div><b>${t.entry ? '₾' + t.entry : 'Free'}</b><span>${t.entry ? t.entryUnit : 'вход'}</span></div>
       </div>
@@ -530,7 +539,7 @@ function tours(v) {
   return `<h1 class="h1">Турниры</h1>
     <p class="sub">Регистрируйтесь прямо здесь — взнос оплачивается на ресепшене в день игры.</p>
     ${upcoming.length ? `<div class="tgrid">${upcoming.map(t => tourCard(t, v)).join('')}</div>` : `<div class="card empty"><b>Скоро анонсируем новый турнир</b>Включите уведомления в «Акциях», чтобы не пропустить.</div>`}
-    ${past.length ? `<h2 class="group-t">Прошедшие</h2><div class="rows">${past.map(t => `<div class="rowi"><span class="grow"><span class="t">${esc(t.title)}</span><span class="s">${esc(t.game)} · ${fmtDay(t.start)}</span></span><span class="dim">${t.regCount} уч.</span></div>`).join('')}</div>` : ''}
+    ${past.length ? `<h2 class="group-t">Прошедшие</h2><div class="rows">${past.map(t => `<div class="rowi"><span class="grow"><span class="t">${esc(t.title)}</span><span class="s">${esc(t.game)} · ${fmtDay(t.start)}</span></span><span class="dim">${t.winners?.length ? '🏆 ' + esc(t.winners[0]) : t.regCount + ' уч.'}</span></div>`).join('')}</div>` : ''}
     ${footer()}`;
 }
 H.tourOpen = el => {
@@ -542,10 +551,12 @@ H.tourOpen = el => {
     title: t.title,
     body: `<p class="muted" style="margin:0 0 16px">${esc(t.game)} · ${esc(t.format)} · ${fmtDay(t.start)}, ${fmtTime(t.start)}</p>
       <div class="summary">
-        <div class="li"><span>Призовой фонд</span><span class="cyan">₾${t.prize}${t.prizeNote ? ` <span class="dim" style="font-weight:500">(${esc(t.prizeNote)})</span>` : ''}</span></div>
+        ${t.prize ? `<div class="li"><span>Призовой фонд</span><span class="cyan">₾${t.prize}${t.prizeNote ? ` <span class="dim" style="font-weight:500">(${esc(t.prizeNote)})</span>` : ''}</span></div>` : ''}
+        ${t.prizeHours ? `<div class="li"><span>Победителям</span><span class="cyan">+${t.prizeHours} ч игры на аккаунт</span></div>` : ''}
         <div class="li"><span>Взнос</span><span>${t.entry ? `₾${t.entry} ${t.entryUnit}` : 'бесплатно'}</span></div>
         <div class="li"><span>Участники</span><span>${t.regCount} из ${t.slots}</span></div>
       </div>
+      ${t.prizeComment ? `<div class="prize-sum" style="margin-bottom:16px">${icon('trophy', 16)}<span>${esc(t.prizeComment)}</span></div>` : ''}
       ${t.about ? `<p style="margin:0 0 18px;color:var(--ink-2);font-size:14.5px;line-height:1.55">${esc(t.about)}</p>` : ''}
       ${t.teams.length ? `<h3 class="group-t" style="margin-top:0">${solo ? 'Игроки' : 'Команды'}</h3><div class="team-list" style="margin-bottom:22px">${t.teams.map(n => `<span>${esc(n)}</span>`).join('')}</div>` : ''}
       ${t.myReg ? `<div class="reg-ok" style="margin-bottom:10px">${icon('check', 18)}Вы в списке · ${esc(t.myReg.team)}</div><button class="btn btn-ghost" data-a="tourLeave" data-id="${t.id}">Отменить участие</button>`
@@ -554,7 +565,7 @@ H.tourOpen = el => {
           <label class="field"><span>${solo ? 'Никнейм' : 'Название команды'}</span><input name="team" placeholder="${solo ? 'Ваш ник в игре' : 'Например, Batumi Five'}" required></label>
           ${solo ? '' : `<label class="field"><span>Капитан</span><input name="captain" placeholder="Ник капитана" value="${esc(u?.username ? '@' + u.username : '')}"></label>
           <label class="field"><span>Состав <span class="dim" style="font-weight:500">— можно позже</span></span><input name="players" placeholder="Ники через запятую"></label>`}
-          <label class="field"><span>Связь</span><input name="contact" placeholder="@username или телефон" value="${esc(u?.username ? '@' + u.username : (LS.get('nebula:phone') || ''))}" required></label>
+          <label class="field"><span>Связь</span><input name="contact" placeholder="@username или телефон" value="${esc(v.profile?.phone || (u?.username ? '@' + u.username : ''))}" required></label>
           <button class="btn" type="submit" data-a="tourReg" data-id="${t.id}">Зарегистрироваться${t.entry ? ` · ₾${t.entry}` : ''}</button>
         </form>` : `<button class="btn btn-ghost" disabled>${t.open ? 'Мест нет' : 'Регистрация закрыта'}</button>`}`,
   });
@@ -566,7 +577,7 @@ H.tourReg = async (el, e) => {
   await busy(el, async () => {
     try {
       await store.act('registerTournament', { id: el.dataset.id, team: d.team, captain: d.captain, contact: d.contact, players: (d.players || '').split(',') });
-      haptic.ok(); closeAllSheets(); render(); toast('Вы зарегистрированы. Увидимся на турнире!', 'ok');
+      haptic.ok(); closeAllSheets(); render(); toast('Вы в списке участников!', 'ok');
     } catch (err) { toast(err.message, 'err'); }
   });
 };
@@ -593,14 +604,14 @@ function promos(v) {
 
     <section class="sec">
       <h2 class="h2" style="margin-bottom:14px">Пакетные цены</h2>
-      <div class="seg" role="tablist" data-keep="pz">${C.HZ_ROWS.map(([id, label]) => `<button role="tab" class="${S.promoZone === id ? 'on' : ''}" data-a="pz" data-zone="${id}" aria-selected="${S.promoZone === id}">${label}</button>`).join('')}</div>
+      <div class="seg" role="tablist" data-keep="pz">${C.HZ_ROWS.map(([id, label]) => `<button role="tab" class="${S.promoZone === id ? 'on' : ''}" data-a="pz" data-zone="${id}" aria-selected="${S.promoZone === id}">${label.replace('Duo 500Hz', 'Duo').replace('Hz', '')}</button>`).join('')}</div>
       <div class="card" style="margin-top:12px;padding:14px 18px 6px">
         <table class="ptable">
           <thead><tr><th>Пакет</th><th>Пн–Чт</th><th>Пт–Вс</th></tr></thead>
           <tbody>${PACKAGES.map(pk => {
             const [a, b] = pk.prices[z.id];
             const save = z.price[0] * pk.hours - a;
-            return `<tr><td><span class="pn">${pk.name.replace('Пакет на ', '')}</span><span class="pw">${pk.window}</span></td>
+            return `<tr><td><span class="pn">${{ p3: '3 часа', p5: '5 часов', morning: 'Утро', night: 'Ночь' }[pk.id]}</span><span class="pw">${pk.window.replace(' – ', '–')}</span></td>
               <td><span class="pv">₾${a}</span>${save > 0 ? `<span class="ps">вместо <s>₾${z.price[0] * pk.hours}</s></span>` : ''}</td><td class="pv2">₾${b}</td></tr>`;
           }).join('')}</tbody>
         </table>
@@ -632,12 +643,13 @@ function me(v) {
       <button class="ava-btn" data-a="avaSheet" aria-label="Изменить фото">${avatarHTML(v, 64)}<span class="ava-cam">${icon('edit', 13)}</span></button>
       <div style="min-width:0"><h1>${esc(p?.name || name)}</h1><p>${p?.phone ? esc(p.phone) : (u?.username ? '@' + esc(u.username) : 'Гость NEBULA')}</p></div>
     </div>
+    ${p?.bonusHours ? `<div class="bonus-card">${icon('trophy', 22)}<div><b>${p.bonusHours} ${C.plural(p.bonusHours, 'бонусный час', 'бонусных часа', 'бонусных часов')}</b><span>Спишем при следующей брони — отметьте в подтверждении</span></div></div>` : ''}
     <section class="sec" style="margin-top:24px">
       <div class="sec-head"><h2 class="h2">Мои брони</h2></div>
       ${up.length ? up.map(b => bookingCard(b)).join('') : `<div class="card empty"><b>Пока без броней</b>Выберите свободный ПК — это займёт минуту.<div style="margin-top:16px"><button class="btn btn-sm" data-a="go" data-tab="book" style="width:auto">Забронировать</button></div></div>`}
       ${past.length ? `<h3 class="group-t">История</h3><div class="rows">${past.map(b => `<div class="rowi"><span class="grow"><span class="t">${b.seats.length > 1 ? 'Места' : 'Место'} ${b.seats.join(', ')}</span><span class="s">${fmtDay(b.start)}, ${fmtTime(b.start)} · ${b.hours} ч</span></span><span class="pill ${b.status}">${STATUS[b.status]}</span></div>`).join('')}</div>` : ''}
     </section>
-    ${myT.length ? `<section class="sec"><div class="sec-head"><h2 class="h2">Мои турниры</h2></div><div class="rows">${myT.map(t => `<button class="rowi" data-a="tourOpen" data-id="${t.id}"><span class="grow"><span class="t">${esc(t.title)}</span><span class="s">${esc(t.myReg.team)} · ${fmtDay(t.start)}, ${fmtTime(t.start)}</span></span>${icon('chevron', 18)}</button>`).join('')}</div></section>` : ''}
+    ${myT.length ? `<section class="sec"><div class="sec-head"><h2 class="h2">Мои турниры</h2></div><div class="rows">${myT.map(t => `<button class="rowi" data-a="tourOpen" data-id="${t.id}"><span class="grow"><span class="t">${esc(t.title)}</span><span class="s">${t.myReg.winner ? `🏆 ${t.myReg.winner.place} место${t.myReg.winner.hours ? ` · +${t.myReg.winner.hours} ч` : ''} · ` : ''}${esc(t.myReg.team)} · ${fmtDay(t.start)}, ${fmtTime(t.start)}</span></span>${icon('chevron', 18)}</button>`).join('')}</div></section>` : ''}
     <section class="sec">
       <div class="rows">
         <div class="rowi"><span class="ic-wrap">${icon('bell', 20)}</span><span class="grow"><span class="t">Уведомления об акциях</span><span class="s">Скидки и анонсы турниров</span></span><button class="switch ${v.subscribed ? 'on' : ''}" role="switch" aria-checked="${v.subscribed}" data-a="sub" aria-label="Уведомления"></button></div>
