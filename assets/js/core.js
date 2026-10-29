@@ -524,11 +524,21 @@ export const actions = {
   // Сброс к чистым демо-данным: профили гостей и подписки сохраняются, брони и турниры — заново
   resetDemo(db, p, ctx) {
     needAdmin(ctx);
-    const keep = { users: db.users || {}, subs: Object.fromEntries(Object.entries(db.subs || {}).filter(([k]) => !k.startsWith('seed-'))) };
-    const fresh = seedDB(ctx.now || Date.now());
+    // убираем тестовый мусор, но действующие брони и регистрации настоящих гостей из Telegram сохраняем
+    const now = ctx.now || Date.now();
+    const real = x => String(x.uid || '').startsWith('tg-');
+    const keep = {
+      users: db.users || {}, subs: Object.fromEntries(Object.entries(db.subs || {}).filter(([k]) => !k.startsWith('seed-'))),
+      bookings: (db.bookings || []).filter(b => real(b) && ['new', 'confirmed', 'arrived'].includes(b.status) && b.start + b.hours * 3600e3 > now),
+      regs: Object.fromEntries((db.tournaments || []).map(t => [t.id, (t.regs || []).filter(real)])),
+    };
+    const fresh = seedDB(now);
     for (const k of Object.keys(db)) delete db[k];
     Object.assign(db, fresh);
     db.users = keep.users;
+    const taken = new Set(keep.bookings.map(b => b.code));
+    db.bookings = db.bookings.filter(b => !taken.has(b.code) && !keep.bookings.some(k => k.seats.some(s => b.seats.includes(s)) && b.start < k.start + k.hours * 3600e3 && k.start < b.start + b.hours * 3600e3)).concat(keep.bookings);
+    for (const t of db.tournaments) for (const r of keep.regs[t.id] || []) if (t.regs.length < t.slots && !t.regs.some(x => x.team.toLowerCase() === r.team.toLowerCase())) t.regs.push(r);
     for (const u of Object.values(db.users)) delete u.bonusHours;
     Object.assign(db.subs, keep.subs);
     return {};

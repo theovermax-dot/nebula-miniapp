@@ -1,8 +1,8 @@
 // Первый вход: имя + согласие → подтверждение номера через Telegram → аватар. Дальше приложение помнит человека.
-import { store } from './store.js?v=1793300130';
-import { tg, tgUser, haptic, openLink } from './tg.js?v=1793300130';
-import { esc, $, icon, toast, sheet, busy } from './ui.js?v=1793300130';
-import { PRIVACY_HTML } from './privacy.js?v=1793300130';
+import { store } from './store.js?v=1793300424';
+import { tg, tgUser, haptic, openLink } from './tg.js?v=1793300424';
+import { esc, $, icon, toast, sheet, busy } from './ui.js?v=1793300424';
+import { PRIVACY_HTML } from './privacy.js?v=1793300424';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
