@@ -608,3 +608,42 @@ body.onboarding main.screen { padding-bottom: calc(var(--safe-bottom) + 24px); }
   body:not(.admin) main.screen.with-bar { padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 40px); }
   .sumbar { display: none; }
 }
+
+/* ---------- бронь, шаг 1: день · время · часы ---------- */
+.bw { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.bw-sec { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px 16px 16px; }
+.bw-sec .hscroll { margin: 0 -16px; padding: 2px 16px; }
+.bw-t { font: 700 15px/1.2 var(--f-text); margin: 0 0 12px; color: var(--ink); }
+.bw-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.bw-end { display: block; color: var(--ink-3); font-size: 13px; margin-top: 4px; }
+.bw-end .mono { color: var(--ink-2); }
+.bw .btn { margin-top: 6px; }
+@media (min-width: 1000px) {
+  .bw { max-width: 680px; }
+  .bw-sec .hscroll { margin: 0; padding: 2px 0; }
+}
+
+/* ---------- бронь, шаг 2: шапка ---------- */
+.bk-head { display: flex; align-items: center; gap: 8px; margin: 10px 0 12px; }
+.bk-head .icon-btn { margin-left: -8px; color: var(--ink); }
+.bk-head .grow { flex: 1; min-width: 0; }
+.bk-head b { display: block; font: 800 22px/1.15 var(--f-text); letter-spacing: -0.02em; }
+.bk-head span { display: block; color: var(--ink-3); font-size: 13.5px; margin-top: 2px; }
+
+/* ---------- подтверждение: тариф и акция ---------- */
+.cf-t { font: 700 14px var(--f-text); color: var(--ink-2); margin: 4px 0 10px; }
+.opts { display: grid; gap: 8px; margin-bottom: 18px; }
+.opt { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line-2); text-align: left; transition: border-color .2s, background .2s; }
+.opt .grow { flex: 1; min-width: 0; }
+.opt b { display: block; font-size: 15px; }
+.opt .grow span { display: block; font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+.opt-p { font: 600 17px var(--f-fig); white-space: nowrap; }
+.radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line-2); flex: none; transition: border-color .2s, box-shadow .2s; }
+.opt.on { border-color: var(--blue); background: rgba(11, 77, 255, .1); }
+.opt.on .radio { border-color: var(--blue); box-shadow: inset 0 0 0 4px var(--surface-2), inset 0 0 0 10px var(--blue); }
+.promo-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.promo-chips .chip { height: 38px; font-size: 13.5px; }
+.cf-note { color: var(--ink-3); font-size: 12.5px; line-height: 1.5; margin: 10px 2px 0; }
+.cf-total { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 2px; margin-bottom: 4px; border-top: 1px solid var(--line); font-weight: 700; }
+.cf-total span:last-child { font: 700 26px var(--f-fig); letter-spacing: -0.03em; }
+.cf-total s { font: 500 15px var(--f-fig); color: var(--ink-3); margin-right: 8px; }

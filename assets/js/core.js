@@ -276,7 +276,7 @@ export const actions = {
       if (c) fail(c.kind === 'repair' ? `Место ${s} на ремонте` : `Место ${s} уже занято на ${fmtTime(Math.max(c.start, start))}. Выберите другое`);
     }
     const q = quote(seats, start, hours);
-    const b = { id: rid(), code: code(), seats, start, hours, pkg: q.pkg, price: q.price, hourly: q.hourly, name, phone, verified: !!prof?.verified, tgUser: clean(ctx.username || prof?.tgUser, 40), uid: ctx.uid, comment: clean(p.comment, 200), status: 'new', createdAt: now };
+    const b = { id: rid(), code: code(), seats, start, hours, pkg: q.pkg, price: q.price, hourly: q.hourly, name, phone, verified: !!prof?.verified, tgUser: clean(ctx.username || prof?.tgUser, 40), uid: ctx.uid, comment: clean(p.comment, 200), promo: clean(p.promo, 60), status: 'new', createdAt: now };
     db.bookings.push(b);
     return { booking: b, notify: 'booking' };
   },
@@ -474,7 +474,7 @@ export function runAction(db, name, payload, ctx) {
 export function notifyText(kind, res, db) {
   if (kind === 'booking') {
     const b = res.booking;
-    return `🎮 Новая бронь ${b.code}\n\nМеста: ${b.seats.join(', ')} (${[...new Set(b.seats.map(s => zoneOf(s).short || zoneOf(s).name))].join(', ')})\nКогда: ${relDay(b.start)} ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)} (${b.hours} ч)\nСумма: ₾${b.price}${b.pkg ? ' · пакет' : ''}\n\n${b.name} · ${b.phone}${b.tgUser ? ' · @' + b.tgUser : ''}${b.comment ? '\n💬 ' + b.comment : ''}`;
+    return `🎮 Новая бронь ${b.code}\n\nМеста: ${b.seats.join(', ')} (${[...new Set(b.seats.map(s => zoneOf(s).short || zoneOf(s).name))].join(', ')})\nКогда: ${relDay(b.start)} ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)} (${b.hours} ч)\nСумма: ₾${b.price}${b.pkg ? ' · пакет' : ''}${b.promo ? '\nАкция: ' + b.promo : ''}\n\n${b.name} · ${b.phone}${b.tgUser ? ' · @' + b.tgUser : ''}${b.comment ? '\n💬 ' + b.comment : ''}`;
   }
   if (kind === 'cancel') { const b = res.booking; return `❌ Отмена брони ${b.code} — ${b.name}, места ${b.seats.join(', ')}, ${relDay(b.start)} ${fmtTime(b.start)}`; }
   if (kind === 'reg') { const t = res.tournament; return `🏆 Регистрация на «${t.title}» (${t.game})\n${res.reg.team}${res.reg.captain ? ' · ' + res.reg.captain : ''} · ${res.reg.contact}\nЗанято ${t.regs.length} из ${t.slots}`; }

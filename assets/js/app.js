@@ -138,7 +138,7 @@ function render() {
     setBack(null);
     return;
   }
-  const key = S.admin ? 'a:' + S.adminTab : S.tab;
+  const key = S.admin ? 'a:' + S.adminTab : S.tab + (S.tab === 'book' ? ':' + S.bk.step : '');
   const fresh = key !== lastKey;
   // сохраняем горизонтальные прокрутки
   const keep = {}; $$('[data-keep]').forEach(el => { keep[el.dataset.keep] = el.scrollLeft; });
@@ -147,13 +147,14 @@ function render() {
   let html = '';
   if (S.admin) html = adminApi.screens[S.adminTab](v);
   else html = ({ home, book, tours, promos, me })[S.tab](v);
-  main.className = 'screen' + (fresh ? ' enter' : '') + (!S.admin && S.tab === 'book' ? ' with-bar' : '');
+  const seatStep = !S.admin && S.tab === 'book' && S.bk.step === 'seat';
+  main.className = 'screen' + (fresh ? ' enter' : '') + (seatStep ? ' with-bar' : '');
   main.innerHTML = html;
-  $('#bar').innerHTML = !S.admin && S.tab === 'book' ? sumbar(v) : '';
+  $('#bar').innerHTML = seatStep ? sumbar(v) : '';
   $$('[data-keep]').forEach(el => { if (!fresh && keep[el.dataset.keep] != null) el.scrollLeft = keep[el.dataset.keep]; });
   if (fresh) { scrollTo(0, 0); afterFresh(); }
   lastKey = key;
-  window.__rootBack = (!S.admin && S.tab !== 'home') ? () => go('home') : (S.admin ? () => H.adminExit() : null);
+  window.__rootBack = seatStep ? () => H.bkToWhen() : (!S.admin && S.tab !== 'home') ? () => go('home') : (S.admin ? () => H.adminExit() : null);
   if (!topSheet()) setBack(window.__rootBack);
 }
 function afterFresh() {
@@ -165,7 +166,6 @@ function go(tab) { S.tab = tab; haptic.tap(); render(); }
 // ---------- КЛУБ (главная) ----------
 function home(v) {
   const free = freeCount(v);
-  const nextT = v.tournaments.find(t => t.start > v.now);
   const fromP = Math.min(...ZONES.map(z => z.price[0]));
   return `<div class="cols"><div class="col">
   <section class="hero" aria-label="Свободные места сейчас">
@@ -188,10 +188,6 @@ function home(v) {
     <div><b>₾${fromP}</b><span>от / час</span></div>
   </div>
 
-  ${nextT ? `<section class="sec">
-    <div class="sec-head"><h2 class="h2">Ближайший турнир</h2><button class="link-btn" data-a="go" data-tab="tours">Все${icon('chevron', 16)}</button></div>
-    ${tourCard(nextT, v)}
-  </section>` : ''}
   </div><div class="col">
   <section class="sec">
     <div class="sec-head"><h2 class="h2">Пакетом выгоднее</h2><button class="link-btn" data-a="go" data-tab="promos">Цены${icon('chevron', 16)}</button></div>
@@ -254,65 +250,64 @@ H.zoneInfo = el => {
   });
   s.root.dataset.zone = z.id;
 };
-H.bookZone = el => { closeAllSheets(); S.tab = 'book'; render(); setTimeout(() => $('#zone-' + el.dataset.zone)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
+H.bookZone = el => { closeAllSheets(); S.tab = 'book'; S.bk.step = 'seat'; render(); setTimeout(() => $('#zone-' + el.dataset.zone)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
 H.open = (el, e) => { e.preventDefault(); openLink(el.dataset.url); };
 H.go = el => { closeAllSheets(); go(el.dataset.tab); };
 
 // ---------- БРОНЬ ----------
 function book(v) {
+  return S.bk.step === 'seat' ? bookSeat(v) : bookWhen(v);
+}
+const MON_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+// Шаг 1 — только день, время и часы
+function bookWhen(v) {
   const days = Array.from({ length: 7 }, (_, i) => dayStart(Date.now()) + i * 864e5 + 3 * 3600e3).map(dayStart);
-  const minSlot = minSlotFor(S.bk.day);
-  const slots = []; for (let m = Math.max(0, minSlot); m <= 23 * 60 + 30; m += 30) slots.push(m);
+  const slots = []; for (let m = Math.max(0, minSlotFor(S.bk.day)); m <= 23 * 60 + 30; m += 30) slots.push(m);
   const start = bkStart(), end = bkEnd();
-  const q = C.quote(S.bk.seats.size ? [...S.bk.seats] : [16], start, S.bk.hours);
-  const pkg = q.pkg && PACKAGES.find(p => p.id === q.pkg);
-  let note = `до <span class="mono" style="color:var(--ink)">${fmtTime(end)}</span>${clubParts(end).d !== clubParts(start).d ? ' следующего дня' : ''}`;
-  const nSeats = Math.max(1, S.bk.seats.size);
-  if (pkg) note += `<br><b>Действует ${pkgLabel(pkg)}: ${money(q.price)} вместо ${money(q.hourly)}${nSeats > 1 ? ` за ${nSeats} ${C.plural(nSeats, 'место', 'места', 'мест')}` : ''}</b>`;
-  else if (S.bk.hours === 3) note += '<br>Пакет «3 часа» действует при начале с 08:00 до 16:00';
+  const free = ALL_SEATS.filter(s => seatInWindow(v, s).ok).length;
   return `
-  <h1 class="h1">Бронь места</h1>
-  <p class="sub">Выберите время — карта покажет, какие ПК свободны именно тогда.</p>
-  <div class="bk-layout"><div class="bk-main">
-  <div class="step">
-    <div class="step-t"><h2>Когда</h2><span class="hint">${C.isWeekend(start) ? 'Пт–Вс — тариф выходных' : 'Пн–Чт — будний тариф'}</span></div>
-    <div class="hscroll" data-keep="days" role="listbox" aria-label="День">
-      ${days.map((d, i) => {
-        const p = clubParts(d);
-        const lbl = i === 0 ? 'Сегодня' : i === 1 ? 'Завтра' : C.wdShort(d);
-        const disabled = i === 0 && nextSlotMin() > 23 * 60 + 30;
-        return `<button class="chip tall ${d === S.bk.day ? 'on' : ''}" data-a="bkDay" data-day="${d}" ${disabled ? 'disabled' : ''}>${lbl}<small>${p.d} ${['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][p.m]}</small></button>`;
-      }).join('')}
-    </div>
-    <div class="hscroll" data-keep="times" style="margin-top:10px" role="listbox" aria-label="Время начала">
-      ${slots.map(m => `<button class="chip time ${m === S.bk.startMin ? 'on' : ''}" data-a="bkTime" data-min="${m}">${pad(Math.floor(m / 60))}:${pad(m % 60)}</button>`).join('')}
-    </div>
-  </div>
-
-  <div class="step">
-    <div class="step-t"><h2>Сколько играем</h2></div>
-    <div class="dur">
+  <h1 class="h1">Бронь</h1>
+  <div class="bw">
+    <section class="bw-sec">
+      <h2 class="bw-t">Выберите день</h2>
+      <div class="hscroll" data-keep="days" role="listbox" aria-label="День">
+        ${days.map((d, i) => {
+          const p = clubParts(d);
+          const lbl = i === 0 ? 'Сегодня' : i === 1 ? 'Завтра' : C.wdShort(d);
+          const disabled = i === 0 && nextSlotMin() > 23 * 60 + 30;
+          return `<button class="chip tall ${d === S.bk.day ? 'on' : ''}" data-a="bkDay" data-day="${d}" ${disabled ? 'disabled' : ''}>${lbl}<small>${p.d} ${MON_SHORT[p.m]}</small></button>`;
+        }).join('')}
+      </div>
+    </section>
+    <section class="bw-sec">
+      <h2 class="bw-t">Время начала</h2>
+      <div class="hscroll" data-keep="times" role="listbox" aria-label="Время начала">
+        ${slots.map(m => `<button class="chip time ${m === S.bk.startMin ? 'on' : ''}" data-a="bkTime" data-min="${m}">${pad(Math.floor(m / 60))}:${pad(m % 60)}</button>`).join('')}
+      </div>
+    </section>
+    <section class="bw-sec bw-row">
+      <div><h2 class="bw-t" style="margin:0">Сколько часов</h2><span class="bw-end">до <span class="mono">${fmtTime(end)}</span>${clubParts(end).d !== clubParts(start).d ? ' следующего дня' : ''}</span></div>
       <div class="stepper">
         <button data-a="bkHours" data-d="-1" ${S.bk.hours <= 1 ? 'disabled' : ''} aria-label="Меньше">${icon('minus', 20)}</button>
         <output aria-live="polite">${S.bk.hours}<small>ч</small></output>
         <button data-a="bkHours" data-d="1" ${S.bk.hours >= 12 ? 'disabled' : ''} aria-label="Больше">${icon('plus', 20)}</button>
       </div>
-      <div class="dur-note">${note}</div>
-    </div>
-    <div class="hscroll" style="margin-top:12px" data-keep="pkgs">
-      ${PACKAGES.map(p => `<button class="chip ${q.pkg === p.id ? 'on' : ''}" data-a="usePkg" data-pkg="${p.id}">${p.short}<small>${p.window.replace(/ – /g, '–')}</small></button>`).join('')}
-    </div>
+    </section>
+    <button class="btn" data-a="bkToSeat" ${free ? '' : 'disabled'}>${free ? `Выбрать место · свободно ${free}` : 'В это время всё занято'}${free ? icon('chevron', 18) : ''}</button>
+  </div>`;
+}
+// Шаг 2 — карта мест
+function bookSeat(v) {
+  const start = bkStart();
+  return `
+  <div class="bk-head">
+    <button class="icon-btn" data-a="bkToWhen" aria-label="Назад к выбору времени">${icon('back', 22)}</button>
+    <div class="grow"><b>Выберите место</b><span>${relDay(start)}, ${fmtTime(start)}–${fmtTime(bkEnd())} · ${S.bk.hours} ч</span></div>
+    <button class="link-btn" data-a="bkToWhen">Изменить</button>
   </div>
-
-  <div class="step">
-    <div class="step-t"><h2>Место</h2><span class="hint">${S.bk.seats.size ? `выбрано ${S.bk.seats.size}` : 'можно несколько'}</span></div>
-    <div class="hscroll" data-keep="zj">
-      ${ZONES.map(z => {
-        const fr = z.seats.filter(s => seatInWindow(v, s).ok).length;
-        return `<button class="chip" data-a="jump" data-zone="${z.id}">${zoneLabel(z)}<small>${fr} из ${z.seats.length}</small></button>`;
-      }).join('')}
-    </div>
-    <div class="zones" style="margin-top:12px">
+  <div class="bk-layout"><div class="bk-main">
+    <div class="legend" style="margin:4px 2px 14px"><span><i style="background:var(--green)"></i>Свободен</span><span><i style="background:var(--grey)"></i>Занят</span><span><i style="background:var(--amber)"></i>Бронь</span><span><i style="background:var(--blue)"></i>Ваш выбор</span></div>
+    <div class="zones">
     ${ZONES.map(z => {
       const pr = z.price[C.isWeekend(start) ? 1 : 0];
       const allFree = z.seats.every(s => seatInWindow(v, s).ok);
@@ -323,9 +318,10 @@ function book(v) {
       </section>`;
     }).join('')}
     </div>
-  </div>
   </div><aside class="bk-aside" aria-label="Ваша бронь">${summaryCard(v)}</aside></div>`;
 }
+H.bkToSeat = () => { S.bk.step = 'seat'; haptic.light(); lastKey = ''; render(); };
+H.bkToWhen = () => { S.bk.step = 'when'; haptic.tap(); lastKey = ''; render(); };
 const pkgLabel = pk => `пакет «${{ p3: '3 часа', p5: '5 часов', morning: 'Утро', night: 'Ночь' }[pk.id]}»`;
 // подробный расчёт: по зонам × часы × тариф, затем пакет и итог
 function calcRows() {
@@ -402,34 +398,62 @@ H.usePkg = el => {
     else { day += 864e5; toast(`${pk.name} — переносим на завтра`); }
   }
   if (startMin > 23 * 60 + 30) { day += 864e5; startMin = 12 * 60; }
-  Object.assign(S.bk, { day, startMin, hours: pk.hours });
+  Object.assign(S.bk, { day, startMin, hours: pk.hours, step: 'seat' });
   closeAllSheets();
   dropConflicts();
   S.tab = 'book'; haptic.tap(); render();
 };
+// варианты тарифа для выбранных мест и времени начала
+function tariffOptions(seats) {
+  const start = bkStart(), p = clubParts(start), sm = p.h * 60 + p.min;
+  const iv = store.view.occupied;
+  const fits = h => seats.every(s => !C.seatConflict(iv, s, start, start + h * 3600e3));
+  const opts = [];
+  const cur = C.quote(seats, start, S.bk.hours);
+  opts.push({ hours: S.bk.hours, title: `${S.bk.hours} ${C.plural(S.bk.hours, 'час', 'часа', 'часов')}`, sub: cur.pkg ? `по ${pkgLabel(PACKAGES.find(x => x.id === cur.pkg)).replace('пакет', 'пакету')}` : 'по часам', price: cur.price, old: cur.saving > 0 ? cur.hourly : 0 });
+  for (const pk of PACKAGES) {
+    if (pk.hours === S.bk.hours || !pk.fits(sm, pk.hours) || !fits(pk.hours)) continue;
+    const q = C.quote(seats, start, pk.hours);
+    if (q.pkg !== pk.id) continue;
+    opts.push({ hours: pk.hours, title: { p3: 'Пакет 3 часа', p5: 'Пакет 5 часов', morning: 'Утро до 13:00', night: 'Ночь до 09:00' }[pk.id], sub: `${pk.hours} ч · вместо ${money(q.hourly)}`, price: q.price });
+  }
+  return opts;
+}
 H.bkNext = () => {
-  const v = store.view; const seats = [...S.bk.seats].sort((a, b) => a - b);
-  const q = C.quote(seats, bkStart(), S.bk.hours);
-  const u = tgUser();
-  const name = LS.get('nebula:name') || (u ? [u.first_name, u.last_name].filter(Boolean).join(' ') : '');
-  const phone = LS.get('nebula:phone') || '';
-  const zones = [...new Set(seats.map(s => zoneLabel(C.zoneOf(s))))].join(', ');
-  const pk = q.pkg && PACKAGES.find(p => p.id === q.pkg);
+  const v = store.view;
+  const st = { promo: '' };
   haptic.light();
-  sheet({
-    title: 'Подтверждение',
-    body: `<div class="summary">
+  const s = sheet({ title: 'Подтверждение', body: '' });
+  const draw = () => {
+    const seats = [...S.bk.seats].sort((a, b) => a - b);
+    const q = C.quote(seats, bkStart(), S.bk.hours);
+    const zones = [...new Set(seats.map(x => zoneLabel(C.zoneOf(x))))].join(', ');
+    const opts = tariffOptions(seats);
+    s.body.innerHTML = `
+      <div class="summary">
         <div class="li"><span>${seats.length > 1 ? 'Места' : 'Место'}</span><span>${seats.join(', ')} · ${zones}</span></div>
         <div class="li"><span>Когда</span><span>${relDay(bkStart())}, ${fmtTime(bkStart())}–${fmtTime(bkEnd())}</span></div>
-        <div class="li"><span>Тариф</span><span>${pk ? pk.name : `${S.bk.hours} ч по часам`}${q.weekend ? ' · выходные' : ''}</span></div>
-        <div class="li total"><span>Итого</span><span>${q.saving > 0 ? `<s>${money(q.hourly)}</s>` : ''}${money(q.price)}</span></div>
       </div>
+      ${opts.length > 1 ? `<h3 class="cf-t">Тариф</h3>
+      <div class="opts" role="radiogroup" aria-label="Тариф">${opts.map(o => `<button type="button" class="opt ${o.hours === S.bk.hours ? 'on' : ''}" data-hours="${o.hours}" role="radio" aria-checked="${o.hours === S.bk.hours}"><span class="radio"></span><span class="grow"><b>${o.title}</b><span>${o.sub}</span></span><span class="opt-p">${money(o.price)}</span></button>`).join('')}</div>` : ''}
+      ${v.promos.length ? `<h3 class="cf-t">Акция</h3>
+      <div class="promo-chips">${['', ...v.promos.map(p => p.title)].map(t => `<button type="button" class="chip ${st.promo === t ? 'on' : ''}" data-promo="${esc(t)}">${t ? esc(t) : 'Без акции'}</button>`).join('')}</div>
+      ${st.promo ? `<p class="cf-note">${esc(v.promos.find(p => p.title === st.promo)?.text || '')} Скидку по акции администратор применит в клубе.</p>` : ''}` : ''}
       <form id="bkForm" novalidate>
-        <div class="who">${avatarHTML(v, 44)}<div class="grow"><b>${esc(v.profile?.name || name)}</b><span>${esc(v.profile?.phone || phone)}</span></div></div>
-        <label class="field"><span>Комментарий <span class="dim" style="font-weight:500">— необязательно</span></span><input name="comment" placeholder="Например: придём вдвоём, нужен геймпад"></label>
-        <p class="pay-note">${icon('clock', 16)}<span>Оплата в клубе. Место держим 15 минут после начала брони.</span></p>
-        <button class="btn" type="submit" data-a="bkSubmit">Забронировать · ${money(q.price)}</button>
-      </form>`,
+        <div class="who" style="margin-top:18px">${avatarHTML(v, 44)}<div class="grow"><b>${esc(v.profile?.name || '')}</b><span>${esc(v.profile?.phone || '')}</span></div></div>
+        <label class="field"><span>Комментарий <span class="dim" style="font-weight:500">— необязательно</span></span><input name="comment" placeholder="Например: нужен геймпад"></label>
+        <input type="hidden" name="promo" value="${esc(st.promo)}">
+        <div class="cf-total"><span>Итого</span><span>${q.saving > 0 ? `<s>${money(q.hourly)}</s>` : ''}${money(q.price)}</span></div>
+        <button class="btn" type="submit" data-a="bkSubmit">Забронировать</button>
+        <p class="pay-note" style="margin:12px 0 0">${icon('clock', 16)}<span>Оплата в клубе. Место держим 15 минут после начала брони.</span></p>
+      </form>`;
+  };
+  draw();
+  s.body.addEventListener('click', e => {
+    const o = e.target.closest('[data-hours]');
+    if (o) { S.bk.hours = Number(o.dataset.hours); haptic.tap(); draw(); render(); return; }
+    const p = e.target.closest('[data-promo]');
+    if (p) { st.promo = p.dataset.promo; haptic.tap(); draw(); }
   });
 };
 H.askContact = el => {
@@ -448,7 +472,7 @@ H.bkSubmit = async (el, e) => {
       LS.set('nebula:name', data.name); LS.set('nebula:phone', data.phone);
       haptic.ok();
       closeAllSheets();
-      S.bk.seats.clear(); render();
+      S.bk.seats.clear(); S.bk.step = 'when'; render();
       successSheet(res.booking);
     } catch (err) { toast(err.message, 'err'); }
   });

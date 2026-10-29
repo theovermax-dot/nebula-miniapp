@@ -112,7 +112,7 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
     return `<div class="adm-b">
       <div class="l1"><span class="nm">${esc(b.name)}</span><span class="pill ${b.status}">${STATUS[b.status]}</span></div>
       <div class="l2"><span class="mono">${fmtTime(b.start)}–${fmtTime(endOf(b))}</span>${compact ? '' : ` · ${relDay(b.start)}`} · ${b.seats.length > 1 ? 'места' : 'место'} ${b.seats.join(', ')} · ${zoneLabel(z)}</div>
-      <div class="l2"><span class="fig" style="color:var(--ink)">${money(b.price)}</span>${pk ? ` · ${pk.name.toLowerCase()}` : ` · ${b.hours} ч`} · <span class="mono">${b.code}</span> · ${esc(b.phone)}${b.comment ? `<br>«${esc(b.comment)}»` : ''}</div>
+      <div class="l2"><span class="fig" style="color:var(--ink)">${money(b.price)}</span>${pk ? ` · ${pk.name.toLowerCase()}` : ` · ${b.hours} ч`} · <span class="mono">${b.code}</span> · ${esc(b.phone)}${b.promo ? `<br><span class="cyan">Акция: ${esc(b.promo)}</span>` : ''}${b.comment ? `<br>«${esc(b.comment)}»` : ''}</div>
       <div class="acts">${acts.join('')}${contact}</div>
     </div>`;
   }
