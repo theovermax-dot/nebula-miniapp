@@ -578,3 +578,33 @@ body.onboarding main.screen { padding-bottom: calc(var(--safe-bottom) + 24px); }
 .policy-page { padding-bottom: 48px !important; }
 
 .toast span { overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- сводка брони ---------- */
+.bk-aside { display: none; }
+.bk-sum { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; }
+.bk-sum .h3 { font-size: 18px; margin-bottom: 14px; }
+.bk-when { display: flex; gap: 12px; align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.bk-when b { display: block; font-size: 15px; }
+.bk-when span:not(.ic-wrap) { display: block; font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+.bk-when .ic-wrap { width: 38px; height: 38px; border-radius: 12px; background: var(--surface-2); display: grid; place-items: center; color: var(--cyan); flex: none; }
+.bk-seats { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 4px; }
+.bk-seat { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px 0 12px; border-radius: 9px; background: var(--blue); color: #fff; font: 600 14px var(--f-fig); }
+.bk-seat .ic { opacity: .75; }
+.bk-seat:hover .ic { opacity: 1; }
+.bk-calc { margin: 12px 0 16px; font-size: 13.5px; }
+.bk-calc > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; color: var(--ink-2); }
+.bk-calc > div span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink); }
+.bk-calc .disc span { color: var(--green) !important; }
+.bk-calc .tot { margin-top: 6px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink); font-weight: 700; font-size: 15px; align-items: baseline; }
+.bk-calc .tot span:last-child { font: 700 26px var(--f-fig); letter-spacing: -0.03em; }
+.bk-empty { color: var(--ink-3); font-size: 14px; margin: 16px 0; line-height: 1.5; }
+.bk-pay { display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 12.5px; margin: 14px 0 0; }
+@media (min-width: 1000px) {
+  .bk-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; }
+  .bk-aside { display: block; position: sticky; top: calc(var(--safe-top) + 84px); }
+  .bk-main .zones { display: block; }
+  .bk-main .zones .zone + .zone { margin-top: 12px; }
+  .bk-main .step:first-child { margin-top: 8px; }
+  body:not(.admin) main.screen.with-bar { padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 40px); }
+  .sumbar { display: none; }
+}

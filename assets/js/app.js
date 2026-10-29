@@ -267,12 +267,13 @@ function book(v) {
   const q = C.quote(S.bk.seats.size ? [...S.bk.seats] : [16], start, S.bk.hours);
   const pkg = q.pkg && PACKAGES.find(p => p.id === q.pkg);
   let note = `до <span class="mono" style="color:var(--ink)">${fmtTime(end)}</span>${clubParts(end).d !== clubParts(start).d ? ' следующего дня' : ''}`;
-  if (pkg) note += `<br><b>${pkg.name} — ${money(q.saving / Math.max(1, S.bk.seats.size || 1))} экономии с места</b>`;
-  else if (S.bk.hours === 3) note += '<br>Пакет 3 часа — при старте с 08:00 до 16:00';
+  const nSeats = Math.max(1, S.bk.seats.size);
+  if (pkg) note += `<br><b>Действует ${pkgLabel(pkg)}: ${money(q.price)} вместо ${money(q.hourly)}${nSeats > 1 ? ` за ${nSeats} ${C.plural(nSeats, 'место', 'места', 'мест')}` : ''}</b>`;
+  else if (S.bk.hours === 3) note += '<br>Пакет «3 часа» действует при начале с 08:00 до 16:00';
   return `
   <h1 class="h1">Бронь места</h1>
   <p class="sub">Выберите время — карта покажет, какие ПК свободны именно тогда.</p>
-
+  <div class="bk-layout"><div class="bk-main">
   <div class="step">
     <div class="step-t"><h2>Когда</h2><span class="hint">${C.isWeekend(start) ? 'Пт–Вс — тариф выходных' : 'Пн–Чт — будний тариф'}</span></div>
     <div class="hscroll" data-keep="days" role="listbox" aria-label="День">
@@ -322,6 +323,33 @@ function book(v) {
       </section>`;
     }).join('')}
     </div>
+  </div>
+  </div><aside class="bk-aside" aria-label="Ваша бронь">${summaryCard(v)}</aside></div>`;
+}
+const pkgLabel = pk => `пакет «${{ p3: '3 часа', p5: '5 часов', morning: 'Утро', night: 'Ночь' }[pk.id]}»`;
+// подробный расчёт: по зонам × часы × тариф, затем пакет и итог
+function calcRows() {
+  const seats = [...S.bk.seats].sort((a, b) => a - b);
+  const start = bkStart(), h = S.bk.hours, we = C.isWeekend(start) ? 1 : 0;
+  const groups = ZONES.map(z => ({ z, n: seats.filter(s => z.seats.includes(s)).length })).filter(g => g.n);
+  const q = C.quote(seats, start, h);
+  return { seats, q, rows: groups.map(({ z, n }) => ({ label: `${zoneLabel(z)} · ${n} ${C.plural(n, 'место', 'места', 'мест')} × ${h} ч × ₾${z.price[we]}`, sum: n * h * z.price[we] })) };
+}
+function summaryCard(v) {
+  const { seats, q, rows } = calcRows();
+  const pk = q.pkg && PACKAGES.find(p => p.id === q.pkg);
+  return `<div class="bk-sum">
+    <h2 class="h3">Ваша бронь</h2>
+    <div class="bk-when"><span class="ic-wrap">${icon('calendar', 18)}</span><div><b>${relDay(bkStart())}, ${fmtTime(bkStart())}–${fmtTime(bkEnd())}</b><span>${S.bk.hours} ${C.plural(S.bk.hours, 'час', 'часа', 'часов')} · ${C.isWeekend(bkStart()) ? 'тариф выходных' : 'будний тариф'}</span></div></div>
+    ${seats.length ? `<div class="bk-seats">${seats.map(s => `<button class="bk-seat" data-a="bkSeat" data-seat="${s}" aria-label="Убрать место ${s}">${s}${icon('close', 12)}</button>`).join('')}</div>
+      <div class="bk-calc">
+        ${rows.map(r => `<div><span>${r.label}</span><span>${money(r.sum)}</span></div>`).join('')}
+        ${pk ? `<div class="disc"><span>Скидка: ${pkgLabel(pk)}</span><span>−${money(q.saving)}</span></div>` : ''}
+        <div class="tot"><span>Итого</span><span>${money(q.price)}</span></div>
+      </div>
+      <button class="btn" data-a="bkNext">Далее${icon('chevron', 18)}</button>`
+    : `<p class="bk-empty">Выберите одно или несколько мест на карте слева.</p><button class="btn" disabled>Далее</button>`}
+    <p class="bk-pay">${icon('clock', 15)}Оплата в клубе. Место держим 15 минут после начала.</p>
   </div>`;
 }
 function seatTile(v, s) {
@@ -338,7 +366,7 @@ function sumbar(v) {
   const q = C.quote([...S.bk.seats], bkStart(), S.bk.hours);
   return `<div class="sumbar"><div class="sumbar-in">
     <div class="tot"><b>${money(q.price)}${q.saving > 0 ? `<s>${money(q.hourly)}</s>` : ''}</b>
-    <span>${n === 1 ? 'Место ' : 'Места '}${[...S.bk.seats].sort((a, b) => a - b).join(', ')} · ${S.bk.hours} ч${q.saving > 0 ? ` · <em>пакет −${money(q.saving)}</em>` : ''}</span></div>
+    <span>${n === 1 ? 'Место ' : 'Места '}${[...S.bk.seats].sort((a, b) => a - b).join(', ')} · ${S.bk.hours} ч${q.pkg ? ` · <em>${pkgLabel(PACKAGES.find(p => p.id === q.pkg))}</em>` : ''}</span></div>
     <button class="btn" data-a="bkNext">Далее${icon('chevron', 18)}</button></div></div>`;
 }
 function dropConflicts() {
