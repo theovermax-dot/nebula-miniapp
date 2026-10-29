@@ -5,6 +5,8 @@ import { tg, tgUser } from './tg.js';
 const LS_DB = 'nebula:db:v1';
 const LS_UID = 'nebula:uid';
 const LS_PIN = 'nebula:pin';
+const LS_SESSION = 'nebula:session';
+const LS_AVATAR = 'nebula:avatar';
 const DEMO_PIN = '2828';
 
 const ls = {
@@ -23,10 +25,12 @@ export const store = {
   mode: 'local',
   view: null,
   pin: ls.get(LS_PIN) || '',
+  session: ls.get(LS_SESSION) || '',
+  bot: 'NebulaBatumi_bot',
   listeners: new Set(),
   memDb: null,
 
-  get uid() { const u = tgUser(); return u ? 'tg-' + u.id : 'web-' + webUid(); },
+  get uid() { const u = tgUser(); return u ? 'tg-' + u.id : (ls.get('nebula:localUid') || 'web-' + webUid()); },
   get isAdmin() { return !!this.view?.isAdmin; },
 
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
@@ -36,6 +40,7 @@ export const store = {
     const h = { 'Content-Type': 'application/json', 'x-uid': webUid() };
     if (tg?.initData) h['x-tg-init'] = tg.initData;
     if (this.pin) h['x-admin-pin'] = this.pin;
+    if (this.session && !tg?.initData) h['x-session'] = this.session;
     return h;
   },
 
@@ -46,7 +51,7 @@ export const store = {
       const r = await fetch('/api/state', { headers: this.headers(), signal: ctrl.signal });
       clearTimeout(timer);
       const data = r.ok ? await r.json() : null;
-      if (data?.storage) { this.mode = 'remote'; this.view = data.view; this.emit(); return; }
+      if (data?.storage) { this.mode = 'remote'; this.view = data.view; if (data.bot) this.bot = data.bot; this.emit(); return; }
     } catch { /* нет сервера — демо */ }
     this.mode = 'local';
     this.refreshLocal();
@@ -73,7 +78,7 @@ export const store = {
   refreshLocal() {
     const db = this.loadLocal();
     if (demoTick(db)) this.saveLocal(db); else this.saveLocal(db);
-    this.view = publicView(db, this.ctx());
+    this.view = publicView(db, { ...this.ctx(), avatar: ls.get(LS_AVATAR) });
     this.emit();
   },
 
@@ -91,10 +96,19 @@ export const store = {
       const db = this.loadLocal();
       const snapshot = JSON.stringify(db);
       try {
-        const result = runAction(db, action, payload, this.ctx());
+        const ctx = this.ctx();
+        if (action === 'setAvatar') {
+          if (payload.data) ls.set(LS_AVATAR, payload.data); else ls.del(LS_AVATAR);
+          if (db.users?.[ctx.uid]) db.users[ctx.uid].hasAvatar = !!payload.data;
+          this.saveLocal(db); this.refreshLocal(); return {};
+        }
+        // демо без сервера: номер из Telegram или введённый вручную принимаем как подтверждённый
+        if (action === 'completeProfile') { ctx.verifiedPhone = payload.phone; ctx.via = payload.via || 'demo'; }
+        const result = runAction(db, action, payload, ctx);
+        if (action === 'deleteAccount') ls.del(LS_AVATAR);
         if (result.broadcast) result.broadcast.sent = 0;
         this.saveLocal(db);
-        this.view = publicView(db, this.ctx());
+        this.view = publicView(db, { ...this.ctx(), avatar: ls.get(LS_AVATAR) });
         this.emit();
         return result;
       } catch (e) {
@@ -109,7 +123,9 @@ export const store = {
     } catch {
       throw new Error('Нет связи с сервером. Проверьте интернет');
     }
-    if (data.error) throw new Error(data.error);
+    if (data.error) { const e = new Error(data.error); e.retry = !!data.retry; throw e; }
+    if (data.result?.session) { this.session = data.result.session; ls.set(LS_SESSION, this.session); }
+    if (action === 'deleteAccount') { this.session = ''; ls.del(LS_SESSION); }
     this.view = data.view; this.emit();
     return data.result;
   },
@@ -121,6 +137,8 @@ export const store = {
     ls.set(LS_PIN, pin);
     return true;
   },
+  // выход из аккаунта в браузере (в Telegram аккаунт = Telegram)
+  logoutUser() { this.session = ''; ls.del(LS_SESSION); ls.del(LS_UID); ls.del(LS_AVATAR); this.refresh(); },
   logout() { this.pin = ''; ls.del(LS_PIN); this.refresh(); },
   resetDemo() { ls.del(LS_DB); this.memDb = null; this.refreshLocal(); },
 };

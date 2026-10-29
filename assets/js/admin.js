@@ -110,7 +110,7 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
     if (b.status === 'arrived') acts.push(`<button class="btn btn-ghost btn-xs" data-a="aBk" data-id="${b.id}" data-st="done">Завершить</button>`);
     const contact = `<a class="btn btn-ghost btn-xs" href="${telHref(b.phone)}" aria-label="Позвонить">${icon('phone', 15)}</a>${b.tgUser ? `<a class="btn btn-ghost btn-xs" style="text-transform:none;letter-spacing:0" data-a="open" data-url="https://t.me/${esc(b.tgUser)}" href="https://t.me/${esc(b.tgUser)}">@${esc(b.tgUser)}</a>` : ''}`;
     return `<div class="adm-b">
-      <div class="l1"><span class="nm">${esc(b.name)}</span><span class="pill ${b.status}">${STATUS[b.status]}</span></div>
+      <div class="l1"><span class="nm">${esc(b.name)}${b.verified ? ' <span class="verified" title="Номер подтверждён" style="display:inline-grid;vertical-align:-2px">' + icon('check', 11) + '</span>' : ''}</span><span class="pill ${b.status}">${STATUS[b.status]}</span></div>
       <div class="l2"><span class="mono">${fmtTime(b.start)}–${fmtTime(endOf(b))}</span>${compact ? '' : ` · ${relDay(b.start)}`} · ${b.seats.length > 1 ? 'места' : 'место'} ${b.seats.join(', ')} · ${zoneLabel(z)}</div>
       <div class="l2"><span class="fig" style="color:var(--ink)">${money(b.price)}</span>${pk ? ` · ${pk.name.toLowerCase()}` : ` · ${b.hours} ч`} · <span class="mono">${b.code}</span> · ${esc(b.phone)}${b.comment ? `<br>«${esc(b.comment)}»` : ''}</div>
       <div class="acts">${acts.join('')}${contact}</div>

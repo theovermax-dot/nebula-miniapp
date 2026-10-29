@@ -165,7 +165,7 @@ export function seedDB(now = Date.now()) {
   const p = clubParts(now);
   const at = (dayOffset, h, m = 0) => today + dayOffset * 864e5 + (h * 60 + m) * 60e3;
   const nextWd = wd => { let i = 0; while (clubParts(today + i * 864e5).wd !== wd || i === 0) i++; return i; };
-  const db = { v: 1, demo: true, seats: {}, bookings: [], tournaments: [], promos: [], subs: {}, broadcasts: [], createdAt: now, updatedAt: now };
+  const db = { v: 1, demo: true, seats: {}, bookings: [], tournaments: [], promos: [], subs: {}, broadcasts: [], users: {}, auth: {}, createdAt: now, updatedAt: now };
   demoTick(db, now, true);
   db.seats[9] = { status: 'repair', note: 'Замена блока питания' };
   const mk = (seats, start, hours, name, phone, status, user) => {
@@ -238,6 +238,8 @@ export function publicView(db, ctx = {}) {
     promos: db.promos.filter(p => p.active || ctx.isAdmin),
     myBookings: db.bookings.filter(b => uid && b.uid === uid).sort((a, b) => b.start - a.start),
     subscribed: !!(uid && db.subs[uid]),
+    profile: (uid && db.users?.[uid]) || null,
+    avatar: ctx.avatar || null,
     subCount: Object.keys(db.subs).length,
     isAdmin: !!ctx.isAdmin,
   };
@@ -246,6 +248,7 @@ export function publicView(db, ctx = {}) {
     view.tournamentsFull = db.tournaments;
     view.broadcasts = db.broadcasts.slice(-10).reverse();
     view.seatsRaw = db.seats;
+    view.userCount = Object.keys(db.users || {}).length;
   }
   return view;
 }
@@ -262,7 +265,9 @@ export const actions = {
     const start = Number(p.start);
     if (!(start > now - 15 * 60e3)) fail('Это время уже прошло — выберите другое');
     if (start > now + 14 * 864e5) fail('Бронь доступна на 14 дней вперёд');
-    const name = clean(p.name, 60), phone = clean(p.phone, 30);
+    const prof = db.users?.[ctx.uid];
+    if (!prof?.verified && !ctx.isAdmin) fail('Сначала подтвердите номер телефона в профиле');
+    const name = clean(prof?.name || p.name, 60), phone = clean(prof?.phone || p.phone, 30);
     if (name.length < 2) fail('Как к вам обращаться?');
     if (phone.replace(/\D/g, '').length < 9) fail('Проверьте номер телефона');
     const iv = intervals(db, now), end = start + hours * 3600e3;
@@ -271,7 +276,7 @@ export const actions = {
       if (c) fail(c.kind === 'repair' ? `Место ${s} на ремонте` : `Место ${s} уже занято на ${fmtTime(Math.max(c.start, start))}. Выберите другое`);
     }
     const q = quote(seats, start, hours);
-    const b = { id: rid(), code: code(), seats, start, hours, pkg: q.pkg, price: q.price, hourly: q.hourly, name, phone, tgUser: clean(ctx.username, 40), uid: ctx.uid, comment: clean(p.comment, 200), status: 'new', createdAt: now };
+    const b = { id: rid(), code: code(), seats, start, hours, pkg: q.pkg, price: q.price, hourly: q.hourly, name, phone, verified: !!prof?.verified, tgUser: clean(ctx.username || prof?.tgUser, 40), uid: ctx.uid, comment: clean(p.comment, 200), status: 'new', createdAt: now };
     db.bookings.push(b);
     return { booking: b, notify: 'booking' };
   },
@@ -310,6 +315,76 @@ export const actions = {
     if (p.on) db.subs[ctx.uid] = { name: clean(ctx.name, 60), chatId: ctx.tgId || null, at: ctx.now || Date.now() };
     else delete db.subs[ctx.uid];
     return { subscribed: !!p.on };
+  },
+
+  // ----- профиль и вход -----
+  // Номер уже проверен: на сервере — подписью Telegram, в демо — доверяем клиенту.
+  completeProfile(db, p, ctx) {
+    if (!ctx.uid) fail('Нет идентификатора пользователя');
+    if (!ctx.verifiedPhone) fail('Номер не подтверждён');
+    if (!p.consent) fail('Нужно согласие с политикой конфиденциальности');
+    const name = clean(p.name, 60);
+    if (name.length < 2) fail('Как к вам обращаться?');
+    db.users = db.users || {};
+    const prev = db.users[ctx.uid] || {};
+    db.users[ctx.uid] = { ...prev, name, phone: normPhone(ctx.verifiedPhone), verified: true, via: ctx.via || 'telegram', tgUser: clean(ctx.username, 40), createdAt: prev.createdAt || ctx.now || Date.now(), consentAt: ctx.now || Date.now() };
+    return { profile: db.users[ctx.uid] };
+  },
+  updateProfile(db, p, ctx) {
+    const u = db.users?.[ctx.uid];
+    if (!u) fail('Сначала войдите');
+    const name = clean(p.name, 60);
+    if (name.length < 2) fail('Имя слишком короткое');
+    u.name = name;
+    if ('hasAvatar' in p) u.hasAvatar = !!p.hasAvatar;
+    return { profile: u };
+  },
+  // Вход из браузера: токен → бот получает /start auth_<token> → пользователь делится контактом
+  authStart(db, p, ctx) {
+    db.auth = db.auth || {};
+    const now = ctx.now || Date.now();
+    for (const [k, a] of Object.entries(db.auth)) if (now - a.at > 20 * 60e3) delete db.auth[k];
+    const token = rid(20);
+    db.auth[token] = { uid: ctx.uid, name: clean(p.name, 60), at: now };
+    return { token };
+  },
+  authCheck(db, p, ctx) {
+    const a = db.auth?.[p.token];
+    if (!a) fail('Ссылка устарела — начните заново');
+    if (!a.phone) return { done: false };
+    const uid = 'tg-' + a.tgId;
+    db.users = db.users || {};
+    const prev = db.users[uid] || {};
+    db.users[uid] = { ...prev, name: prev.name || a.name || a.tgName || 'Гость', phone: normPhone(a.phone), verified: true, via: 'bot', tgUser: a.tgUser || '', createdAt: prev.createdAt || a.at, consentAt: a.at };
+    // переносим брони и подписку, сделанные до входа
+    if (a.uid && a.uid !== uid) {
+      db.bookings.forEach(b => { if (b.uid === a.uid) b.uid = uid; });
+      if (db.subs[a.uid]) { db.subs[uid] = { ...db.subs[a.uid], chatId: a.tgId }; delete db.subs[a.uid]; }
+    }
+    delete db.auth[p.token];
+    return { done: true, uid, tgId: a.tgId };
+  },
+  botStart(db, p) {
+    const a = db.auth?.[p.token];
+    if (!a) return { ok: false };
+    a.chat = p.chatId;
+    return { ok: true };
+  },
+  botContact(db, p) {
+    db.phones = db.phones || {};
+    db.phones[p.tgId] = { phone: p.phone, at: Date.now() };
+    const a = Object.values(db.auth || {}).find(x => x.chat === p.chatId && !x.phone);
+    if (!a) return { ok: false };
+    Object.assign(a, { phone: p.phone, tgId: p.tgId, tgName: clean(p.tgName, 60), tgUser: clean(p.tgUser, 40) });
+    return { ok: true };
+  },
+  deleteAccount(db, p, ctx) {
+    if (!ctx.uid) fail('Нет пользователя');
+    delete db.users?.[ctx.uid];
+    delete db.subs[ctx.uid];
+    db.bookings.forEach(b => { if (b.uid === ctx.uid) { b.name = 'Удалённый пользователь'; b.phone = '—'; b.tgUser = ''; b.comment = ''; b.uid = 'deleted'; if (['new', 'confirmed'].includes(b.status)) b.status = 'cancelled'; } });
+    db.tournaments.forEach(t => { t.regs = t.regs.filter(r => r.uid !== ctx.uid); });
+    return { deleted: true };
   },
 
   // ----- админ -----
@@ -374,6 +449,11 @@ export const actions = {
   },
   setDemo(db, p, ctx) { needAdmin(ctx); db.demo = !!p.on; return {}; },
 };
+export function normPhone(ph) {
+  const d = String(ph || '').replace(/[^\d]/g, '');
+  if (d.length === 12 && d.startsWith('995')) return `+995 ${d.slice(3, 6)} ${d.slice(6, 8)} ${d.slice(8, 10)} ${d.slice(10)}`;
+  return d ? '+' + d : '';
+}
 function needAdmin(ctx) { if (!ctx.isAdmin) fail('Нужен доступ администратора'); }
 
 export function runAction(db, name, payload, ctx) {

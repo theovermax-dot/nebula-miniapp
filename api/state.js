@@ -1,12 +1,12 @@
 import { publicView } from '../assets/js/core.js';
-import { loadDB, context, hasStorage, send } from './_lib.js';
+import { loadDB, context, hasStorage, send, getAvatar } from './_lib.js';
 
 export default async function handler(req, res) {
   if (!hasStorage()) return send(res, 200, { storage: false });
   try {
     const ctx = context(req);
-    const db = await loadDB();
-    send(res, 200, { storage: true, view: publicView(db, ctx), me: { uid: ctx.uid, isAdmin: ctx.isAdmin } });
+    const [db, avatar] = await Promise.all([loadDB(), getAvatar(ctx.uid)]);
+    send(res, 200, { storage: true, bot: process.env.BOT_USERNAME || 'NebulaBatumi_bot', view: publicView(db, { ...ctx, avatar }), me: { uid: ctx.uid, isAdmin: ctx.isAdmin } });
   } catch (e) {
     send(res, 500, { error: 'Сервер недоступен, попробуйте ещё раз' });
   }

@@ -3,6 +3,7 @@ import { store } from './store.js';
 import { tg, tgUser, initTelegram, haptic, setBack, openLink, requestWrite } from './tg.js';
 import { esc, $, $$, icon, toast, sheet, confirmSheet, countUp, busy, money, closeAllSheets, topSheet } from './ui.js';
 import { initAdmin } from './admin.js';
+import { initOnboarding, avatarHTML } from './onboarding.js';
 
 const { ZONES, PACKAGES, ALL_SEATS, CLUB, fmtTime, fmtDay, relDay, pad, clubParts, dayStart } = C;
 const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* */ } } };
@@ -117,10 +118,24 @@ function initFullscreen() {
 }
 
 let lastKey = '';
-let adminApi;
+let adminApi, obApi;
 function render() {
   const v = store.view; if (!v) return;
   document.body.classList.toggle('admin', S.admin);
+  // первый вход: подтверждение номера
+  const needOb = !S.admin && (!v.profile || S.ob.step === 'avatar');
+  document.body.classList.toggle('onboarding', needOb);
+  if (needOb) {
+    const fresh = lastKey !== 'ob:' + S.ob.step;
+    $('#topbar').innerHTML = ''; $('#tabbar').innerHTML = ''; $('#bar').innerHTML = '';
+    const main = $('#main');
+    main.className = 'screen' + (fresh ? ' enter' : '');
+    main.innerHTML = obApi.screen(v);
+    obApi.after();
+    lastKey = 'ob:' + S.ob.step;
+    setBack(null);
+    return;
+  }
   const key = S.admin ? 'a:' + S.adminTab : S.tab;
   const fresh = key !== lastKey;
   // сохраняем горизонтальные прокрутки
@@ -371,8 +386,7 @@ H.bkNext = () => {
         <div class="li total"><span>Итого</span><span>${q.saving > 0 ? `<s>${money(q.hourly)}</s>` : ''}${money(q.price)}</span></div>
       </div>
       <form id="bkForm" novalidate>
-        <label class="field"><span>Имя</span><input name="name" autocomplete="name" value="${esc(name)}" placeholder="Как к вам обращаться" required></label>
-        <label class="field"><span>Телефон</span><div class="with-btn"><input name="phone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(phone)}" placeholder="+995 5__ __ __ __" required>${tg?.requestContact ? `<button type="button" class="btn btn-ghost btn-sm" data-a="askContact" style="height:52px">Из Telegram</button>` : ''}</div></label>
+        <div class="who">${avatarHTML(v, 44)}<div class="grow"><b>${esc(v.profile?.name || name)}</b><span><span class="verified">${icon('check', 12)}</span>${esc(v.profile?.phone || phone)}</span></div></div>
         <label class="field"><span>Комментарий <span class="dim" style="font-weight:500">— необязательно</span></span><input name="comment" placeholder="Например: придём вдвоём, нужен геймпад"></label>
         <p class="pay-note">${icon('clock', 16)}<span>Оплата в клубе. Место держим 15 минут после начала брони.</span></p>
         <button class="btn" type="submit" data-a="bkSubmit">Забронировать · ${money(q.price)}</button>
@@ -550,9 +564,10 @@ function me(v) {
   const up = v.myBookings.filter(b => b.start + b.hours * 3600e3 > now && ['new', 'confirmed', 'arrived'].includes(b.status)).sort((a, b) => a.start - b.start);
   const past = v.myBookings.filter(b => !up.includes(b)).slice(0, 6);
   const myT = v.tournaments.filter(t => t.myReg);
+  const p = v.profile;
   return `<div class="me">
-      <div class="avatar">${u?.photo_url ? `<img src="${esc(u.photo_url)}" alt="">` : esc(name.slice(0, 1).toUpperCase())}</div>
-      <div><h1>${esc(name)}</h1><p>${u?.username ? '@' + esc(u.username) : 'Гость NEBULA'}</p></div>
+      <button class="ava-btn" data-a="avaSheet" aria-label="Изменить фото">${avatarHTML(v, 64)}<span class="ava-cam">${icon('edit', 13)}</span></button>
+      <div style="min-width:0"><h1>${esc(p?.name || name)}</h1><p>${p?.phone ? `<span class="verified">${icon('check', 13)}</span>${esc(p.phone)}` : (u?.username ? '@' + esc(u.username) : 'Гость NEBULA')}</p></div>
     </div>
     <section class="sec" style="margin-top:24px">
       <div class="sec-head"><h2 class="h2">Мои брони</h2></div>
@@ -568,6 +583,17 @@ function me(v) {
         <button class="rowi" data-a="adminLogin"><span class="ic-wrap">${icon('shield', 20)}</span><span class="grow"><span class="t">Для персонала</span><span class="s">Вход в админ-панель</span></span>${icon('chevron', 18)}</button>
       </div>
     </section>
+    <section class="sec">
+      <h2 class="group-t" style="margin-top:0">Аккаунт</h2>
+      <div class="rows">
+        <button class="rowi" data-a="editName"><span class="grow"><span class="t">Имя</span><span class="s">${esc(p?.name || '')}</span></span>${icon('edit', 18)}</button>
+        <button class="rowi" data-a="avaSheet"><span class="grow"><span class="t">Фото профиля</span><span class="s">${v.avatar ? 'Загружено' : 'Не выбрано'}</span></span>${icon('chevron', 18)}</button>
+        <div class="rowi"><span class="grow"><span class="t">Телефон</span><span class="s">${esc(p?.phone || '—')} · подтверждён через ${p?.via === 'demo' ? 'демо-код' : 'Telegram'}</span></span><span class="verified lg">${icon('check', 14)}</span></div>
+        <button class="rowi" data-a="privacy"><span class="grow"><span class="t">Политика конфиденциальности</span></span>${icon('chevron', 18)}</button>
+        ${!tg ? `<button class="rowi" data-a="logoutUser"><span class="grow"><span class="t">Выйти из аккаунта</span><span class="s">На этом устройстве</span></span>${icon('logout', 18)}</button>` : ''}
+        <button class="rowi" data-a="deleteAccount"><span class="grow"><span class="t red">Удалить аккаунт</span><span class="s">Профиль, фото и подписка удалятся</span></span></button>
+      </div>
+    </section>
     ${footer()}`;
 }
 export const STATUS = { new: 'Ждёт подтверждения', confirmed: 'Подтверждена', arrived: 'В клубе', done: 'Завершена', cancelled: 'Отменена', noshow: 'Не пришли' };
@@ -581,6 +607,27 @@ function bookingCard(b) {
     ${['new', 'confirmed'].includes(b.status) ? `<button class="btn btn-ghost btn-xs" data-a="cancelBk" data-id="${b.id}">Отменить</button>` : ''}</div>
   </article>`;
 }
+H.editName = () => {
+  const s = sheet({
+    title: 'Как к вам обращаться',
+    body: `<form id="nameForm" novalidate><label class="field"><span class="sr">Имя</span><input name="name" maxlength="60" value="${esc(store.view.profile?.name || '')}"></label><button class="btn" type="submit" data-a="saveName">Сохранить</button></form>`,
+  });
+  setTimeout(() => s.body.querySelector('input')?.focus(), 400);
+};
+H.saveName = async (el, e) => {
+  e?.preventDefault();
+  await busy(el, async () => {
+    try { await store.act('updateProfile', { name: $('#nameForm [name=name]').value }); closeAllSheets(); toast('Сохранено', 'ok'); } catch (err) { toast(err.message, 'err'); }
+  });
+};
+H.logoutUser = async () => {
+  if (!(await confirmSheet({ title: 'Выйти из аккаунта?', text: 'Чтобы снова бронировать, нужно будет подтвердить номер.', ok: 'Выйти' }))) return;
+  store.logoutUser();
+};
+H.deleteAccount = async () => {
+  if (!(await confirmSheet({ title: 'Удалить аккаунт?', text: 'Удалятся профиль, фото, подписка и регистрации на турниры. Активные брони отменятся. Это нельзя отменить.', ok: 'Удалить навсегда', danger: true }))) return;
+  try { await store.act('deleteAccount'); toast('Аккаунт удалён'); } catch (err) { toast(err.message, 'err'); }
+};
 H.cancelBk = async el => {
   if (!(await confirmSheet({ title: 'Отменить бронь?', text: 'Место станет доступно другим гостям.', ok: 'Отменить бронь', danger: true }))) return;
   try { await store.act('cancelBooking', { id: el.dataset.id }); haptic.warn(); render(); toast('Бронь отменена'); } catch (err) { toast(err.message, 'err'); }
@@ -632,6 +679,7 @@ async function boot() {
   initTelegram();
   shell();
   adminApi = initAdmin({ S, render, liveState, STATUS, zoneLabel });
+  obApi = initOnboarding({ S, render, H });
   store.on(() => render());
   initFullscreen();
   await store.init();
