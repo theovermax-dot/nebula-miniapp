@@ -1,5 +1,6 @@
 // Однократная настройка бота: откройте /api/setup?pin=ВАШ_ADMIN_PIN после деплоя.
 import { tg, send, BOT_TOKEN } from './_lib.js';
+import { DESCRIPTION, SHORT_DESCRIPTION } from './_texts.js';
 
 export default async function handler(req, res) {
   const pin = process.env.ADMIN_PIN || '2828';
@@ -10,6 +11,7 @@ export default async function handler(req, res) {
   out.webhook = await tg('setWebhook', { url: `${url}/api/bot`, secret_token: process.env.WEBHOOK_SECRET || undefined, allowed_updates: ['message'] });
   out.menu = await tg('setChatMenuButton', { menu_button: { type: 'web_app', text: 'NEBULA', web_app: { url } } });
   out.commands = await tg('setMyCommands', { commands: [{ command: 'start', description: 'Открыть приложение клуба' }, { command: 'id', description: 'Узнать ID чата (для уведомлений)' }] });
-  out.description = await tg('setMyShortDescription', { short_description: 'Бронь ПК, турниры и акции NEBULA Gaming в Батуми' });
+  out.short = await tg('setMyShortDescription', { short_description: SHORT_DESCRIPTION });
+  out.description = await tg('setMyDescription', { description: DESCRIPTION });
   send(res, 200, { url, ...out });
 }

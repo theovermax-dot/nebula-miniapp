@@ -1,6 +1,7 @@
 // Webhook бота: /start с кнопкой приложения, вход из браузера через «Поделиться номером», /id.
 import { runAction } from '../assets/js/core.js';
 import { tg, send, hasStorage, loadDB, saveDB } from './_lib.js';
+import { WELCOME } from './_texts.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return send(res, 200, { ok: true });
@@ -8,7 +9,7 @@ export default async function handler(req, res) {
   if (secret && req.headers['x-telegram-bot-api-secret-token'] !== secret) return send(res, 401, { ok: false });
   const msg = req.body?.message;
   const url = process.env.WEBAPP_URL || `https://${req.headers.host}`;
-  const openBtn = { inline_keyboard: [[{ text: 'Открыть NEBULA', web_app: { url } }]] };
+  const openBtn = { inline_keyboard: [[{ text: '🎮 Открыть NEBULA Gaming', web_app: { url } }]] };
   try {
     if (!msg) return send(res, 200, { ok: true });
     const chat = msg.chat.id;
@@ -44,7 +45,7 @@ export default async function handler(req, res) {
     } else if (text.startsWith('/id')) {
       await tg('sendMessage', { chat_id: chat, text: `ID этого чата: ${chat}\nВаш ID: ${msg.from?.id}` });
     } else if (text.startsWith('/start') || text.startsWith('/app')) {
-      const caption = 'Добро пожаловать в NEBULA Gaming!\n\nТвой игровой центр в Батуми — теперь в Telegram:\n🖥 свободные ПК в реальном времени\n📅 бронь места за минуту\n🏆 турниры с призами\n🎁 акции и бонусные часы\n\nЖми кнопку ниже 👇';
+      const caption = WELCOME;
       const r = await tg('sendPhoto', { chat_id: chat, photo: `${url}/assets/welcome.jpg`, caption, reply_markup: openBtn });
       if (!r?.ok) await tg('sendMessage', { chat_id: chat, text: caption, reply_markup: openBtn });
     }
