@@ -70,9 +70,9 @@ const ADMIN_TABS = [['hall', 'Зал', 'grid'], ['bookings', 'Брони', 'list
 function renderTop(v) {
   const free = freeCount(v);
   $('#topbar').innerHTML = S.admin
-    ? `<div class="wordmark"><b>NEBUL<i>A</i></b><small>GAMING</small></div><span class="admin-flag">${icon('shield', 14)}Админ</span><span class="spacer"></span>
+    ? `<div class="wordmark"><b>NEBUL<i>A</i></b><small>GAMING</small></div><span class="admin-flag">${icon('shield', 14)}Админ</span><span class="spacer"></span>${fsBtn()}
        <button class="icon-btn" data-a="adminExit" aria-label="Выйти из админки">${icon('logout', 20)}</button>`
-    : `<div class="wordmark" data-a="logoTap"><b>NEBUL<i>A</i></b><small>GAMING</small></div><span class="spacer"></span>
+    : `<div class="wordmark" data-a="logoTap"><b>NEBUL<i>A</i></b><small>GAMING</small></div><span class="spacer"></span>${fsBtn()}
        <button class="live-pill" data-a="go" data-tab="book" aria-label="Свободно ${free} из 22"><span class="dot"></span><b>${free}</b>/ 22 свободно</button>`;
 }
 function renderTabs(v) {
@@ -86,6 +86,34 @@ function renderTabs(v) {
     const badge = (S.admin && id === 'bookings' && pending) ? `<span class="badge">${pending}</span>` : (!S.admin && id === 'me' && mine) ? `<span class="badge">${mine}</span>` : '';
     return `<button class="tab ${cur === id ? 'on' : ''}" data-a="${S.admin ? 'aTab' : 'go'}" data-tab="${id}" aria-current="${cur === id ? 'page' : 'false'}">${icon(ic, 22)}<span>${label}</span>${badge}</button>`;
   }).join('');
+}
+
+// ---------- полный экран (Telegram Desktop / macOS / браузер) ----------
+const TG_DESKTOP = ['tdesktop', 'macos', 'weba', 'webk', 'web', 'unigram'];
+const fsTg = () => !!(tg?.requestFullscreen && tg.isVersionAtLeast?.('8.0') && TG_DESKTOP.includes(tg.platform));
+const fsWeb = () => !tg && !!document.fullscreenEnabled && matchMedia('(min-width: 900px) and (pointer: fine)').matches;
+const isFs = () => tg ? !!tg.isFullscreen : !!document.fullscreenElement;
+function fsBtn() {
+  if (!fsTg() && !fsWeb()) return '';
+  const on = isFs();
+  return `<button class="icon-btn fs-btn" data-a="fsToggle" aria-label="${on ? 'Выйти из полноэкранного режима' : 'Во весь экран'}" title="${on ? 'Свернуть' : 'Во весь экран'}">${icon(on ? 'minimize' : 'maximize', 20)}</button>`;
+}
+H.fsToggle = async () => {
+  haptic.tap();
+  const want = !isFs();
+  LS.set('nebula:fs', want ? '1' : '0');
+  try {
+    if (tg) want ? tg.requestFullscreen() : tg.exitFullscreen();
+    else want ? await document.documentElement.requestFullscreen() : await document.exitFullscreen();
+  } catch { toast('Не получилось развернуть окно', 'err'); }
+};
+function initFullscreen() {
+  if (tg) {
+    tg.onEvent?.('fullscreenChanged', () => { document.documentElement.classList.toggle('is-fs', !!tg.isFullscreen); render(); });
+    tg.onEvent?.('fullscreenFailed', e => { if (e?.error !== 'ALREADY_FULLSCREEN') toast('Полноэкранный режим недоступен в этой версии Telegram', 'err'); });
+    if (fsTg() && LS.get('nebula:fs') === '1') { try { tg.requestFullscreen(); } catch { /* */ } }
+  }
+  document.addEventListener('fullscreenchange', () => { document.documentElement.classList.toggle('is-fs', !!document.fullscreenElement); render(); });
 }
 
 let lastKey = '';
@@ -122,7 +150,7 @@ function home(v) {
   const free = freeCount(v);
   const nextT = v.tournaments.find(t => t.start > v.now);
   const fromP = Math.min(...ZONES.map(z => z.price[0]));
-  return `
+  return `<div class="cols"><div class="col">
   <section class="hero" aria-label="Свободные места сейчас">
     <div class="hero-top">
       <div>
@@ -147,7 +175,7 @@ function home(v) {
     <div class="sec-head"><h2 class="h2">Ближайший турнир</h2><button class="link-btn" data-a="go" data-tab="tours">Все${icon('chevron', 16)}</button></div>
     ${tourCard(nextT, v)}
   </section>` : ''}
-
+  </div><div class="col">
   <section class="sec">
     <div class="sec-head"><h2 class="h2">Пакетом выгоднее</h2><button class="link-btn" data-a="go" data-tab="promos">Цены${icon('chevron', 16)}</button></div>
     <div class="hscroll" data-keep="pk">
@@ -174,6 +202,7 @@ function home(v) {
     <div class="sec-head"><h2 class="h2">Как добраться</h2></div>
     ${contactsBlock()}
   </section>
+  </div></div>
   ${footer()}`;
 }
 function contactsBlock() {
@@ -256,7 +285,7 @@ function book(v) {
         return `<button class="chip" data-a="jump" data-zone="${z.id}">${zoneLabel(z)}<small>${fr} из ${z.seats.length}</small></button>`;
       }).join('')}
     </div>
-    <div style="margin-top:12px">
+    <div class="zones" style="margin-top:12px">
     ${ZONES.map(z => {
       const pr = z.price[C.isWeekend(start) ? 1 : 0];
       const allFree = z.seats.every(s => seatInWindow(v, s).ok);
@@ -423,7 +452,7 @@ function tours(v) {
   const past = v.tournaments.filter(t => t.start <= v.now - 6 * 3600e3);
   return `<h1 class="h1">Турниры</h1>
     <p class="sub">Регистрируйтесь прямо здесь — взнос оплачивается на ресепшене в день игры.</p>
-    ${upcoming.length ? upcoming.map(t => tourCard(t, v)).join('') : `<div class="card empty"><b>Скоро анонсируем новый турнир</b>Включите уведомления в «Акциях», чтобы не пропустить.</div>`}
+    ${upcoming.length ? `<div class="tgrid">${upcoming.map(t => tourCard(t, v)).join('')}</div>` : `<div class="card empty"><b>Скоро анонсируем новый турнир</b>Включите уведомления в «Акциях», чтобы не пропустить.</div>`}
     ${past.length ? `<h2 class="group-t">Прошедшие</h2><div class="rows">${past.map(t => `<div class="rowi"><span class="grow"><span class="t">${esc(t.title)}</span><span class="s">${esc(t.game)} · ${fmtDay(t.start)}</span></span><span class="dim">${t.regCount} уч.</span></div>`).join('')}</div>` : ''}
     ${footer()}`;
 }
@@ -604,6 +633,7 @@ async function boot() {
   shell();
   adminApi = initAdmin({ S, render, liveState, STATUS, zoneLabel });
   store.on(() => render());
+  initFullscreen();
   await store.init();
   const start = tg?.initDataUnsafe?.start_param || location.hash.slice(1) || (location.pathname.startsWith('/admin') ? 'admin' : '');
   if (start === 'book') S.tab = 'book';

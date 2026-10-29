@@ -475,3 +475,36 @@ button.rowi:active, a.rowi:active { background: var(--surface-2); }
 @media (min-width: 900px) {
   body.admin .topbar { padding-left: max(16px, calc((100vw - 1088px) / 2)); padding-right: max(16px, calc((100vw - 1088px) / 2)); }
 }
+
+/* ---------- широкий экран: ноутбуки, компьютеры, полноэкранный режим Telegram Desktop ---------- */
+.fs-btn { margin-right: 2px; }
+.fs-btn:hover { background: var(--surface-2); color: var(--ink); }
+@media (min-width: 1000px) {
+  body:not(.admin) main.screen { max-width: 1120px; padding-left: 32px; padding-right: 32px; }
+  body:not(.admin) .topbar { padding-left: max(32px, calc((100vw - 1056px) / 2)); padding-right: max(32px, calc((100vw - 1056px) / 2)); }
+  body:not(.admin) .sumbar-in { max-width: 1056px; }
+  .h1 { font-size: 40px; margin-top: 24px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+  .cols .col > .sec:first-child { margin-top: 8px; }
+  .hero { padding: 28px 26px 22px; }
+  .hero-num .big { font-size: 96px; }
+  .mm { max-width: 60px; height: 26px; }
+  .mm-row { grid-template-columns: 96px 1fr; }
+  .zones { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  .zones .zone + .zone { margin-top: 0; }
+  .seats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .zone#zone-duo .seats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .tgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  .tgrid .card + .card { margin-top: 0; }
+  .hscroll { margin: 0; padding: 2px 0; flex-wrap: wrap; }
+  .zone-jump { margin: 0 0 12px; }
+  .tabbar { width: min(680px, 100%); }
+  .seat:not(:disabled):hover { border-color: var(--line-2); background: var(--surface-3); }
+  .seat.sel:hover { background: var(--blue-hi); }
+  .chip:hover { border-color: var(--line-2); }
+  .rowi:is(button, a):hover { background: var(--surface-2); }
+}
+@media (min-width: 1000px) {
+  body:not(.admin) main.screen > .sec, body:not(.admin) main.screen > .card, body:not(.admin) main.screen > .seg { max-width: none; }
+}
+@media (min-width: 1000px) { .hscroll > .pk-card { flex: 1 1 calc(50% - 8px); width: auto; } }
