@@ -514,6 +514,18 @@ export const actions = {
     return { broadcast: rec, notify: 'broadcast' };
   },
   setDemo(db, p, ctx) { needAdmin(ctx); db.demo = !!p.on; return {}; },
+  // Сброс к чистым демо-данным: профили гостей и подписки сохраняются, брони и турниры — заново
+  resetDemo(db, p, ctx) {
+    needAdmin(ctx);
+    const keep = { users: db.users || {}, subs: Object.fromEntries(Object.entries(db.subs || {}).filter(([k]) => !k.startsWith('seed-'))) };
+    const fresh = seedDB(ctx.now || Date.now());
+    for (const k of Object.keys(db)) delete db[k];
+    Object.assign(db, fresh);
+    db.users = keep.users;
+    for (const u of Object.values(db.users)) delete u.bonusHours;
+    Object.assign(db.subs, keep.subs);
+    return {};
+  },
 };
 export function normPhone(ph) {
   let d = String(ph || '').replace(/[^\d]/g, '');

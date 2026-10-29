@@ -47,7 +47,7 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
           <section class="sec">
             <div class="rows">
               <div class="rowi"><span class="grow"><span class="t">Демо-симуляция гостей</span><span class="s">Зал сам «заполняется», пока нет реальной интеграции с кассой</span></span><button class="switch ${v.demo ? 'on' : ''}" role="switch" aria-checked="${v.demo}" data-a="aDemo" aria-label="Демо-симуляция"></button></div>
-              ${store.mode === 'local' ? `<button class="rowi" data-a="aReset"><span class="grow"><span class="t">Сбросить демо-данные</span><span class="s">Вернуть исходные брони, турниры и акции</span></span>${icon('refresh', 18)}</button>` : ''}
+              ${`<button class="rowi" data-a="aReset"><span class="grow"><span class="t">Сбросить демо-данные</span><span class="s">Вернуть исходные брони, турниры и акции</span></span>${icon('refresh', 18)}</button>`}
             </div>
             ${store.mode === 'local' ? `<div class="demo-note">Демо-режим: данные хранятся в этом браузере. После подключения бесплатной базы на Vercel брони, турниры и рассылка станут общими для всех гостей и персонала, а уведомления начнут приходить в Telegram.</div>` : ''}
           </section>
@@ -56,7 +56,10 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
   }
   H.aGoPending = () => { A.filter = 'pending'; S.adminTab = 'bookings'; render(); };
   H.aDemo = async () => { try { await store.act('setDemo', { on: !store.view.demo }); haptic.tap(); } catch (e) { toast(e.message, 'err'); } };
-  H.aReset = async () => { if (await confirmSheet({ title: 'Сбросить демо-данные?', text: 'Все тестовые брони и изменения в этом браузере удалятся.', ok: 'Сбросить', danger: true })) { store.resetDemo(); toast('Демо-данные восстановлены', 'ok'); } };
+  H.aReset = async () => {
+    if (!(await confirmSheet({ title: 'Сбросить демо-данные?', text: 'Брони, турниры и акции вернутся к исходным примерам. Профили гостей сохранятся.', ok: 'Сбросить', danger: true }))) return;
+    try { if (store.mode === 'local') store.resetDemo(); else await store.act('resetDemo'); toast('Демо-данные восстановлены', 'ok'); } catch (e) { toast(e.message, 'err'); }
+  };
 
   H.aSeat = el => {
     const v = store.view; const seat = Number(el.dataset.seat);
