@@ -179,7 +179,7 @@ function home(v) {
     <div class="minimap">
       ${ZONES.map(z => `<div class="mm-row"><span class="zl">${zoneLabel(z)}<em>${z.hz}</em></span><div class="mm-seats">${z.seats.map(s => `<span class="mm ${liveState(v, s).cls}" title="Место ${s}">${s}</span>`).join('')}</div></div>`).join('')}
     </div>
-    <div class="legend"><span><i style="background:var(--green)"></i>Свободен</span><span><i style="background:#2a2c4a"></i>Занят</span><span><i style="background:var(--amber)"></i>Скоро бронь</span><span><i style="background:var(--red)"></i>Ремонт</span></div>
+    <div class="legend"><span><i style="background:var(--green)"></i>Свободен</span><span><i style="background:#2a2c4a"></i>Занят</span><span><i style="background:var(--amber)"></i>Свободен, но скоро бронь</span><span><i style="background:var(--red)"></i>Ремонт</span></div>
   </section>
   <div style="margin-top:12px"><button class="btn" data-a="go" data-tab="book">${icon('seat', 18)}Забронировать место</button></div>
   <div class="facts">
@@ -308,7 +308,7 @@ function bookSeat(v) {
     <button class="link-btn" data-a="bkToWhen">Изменить</button>
   </div>
   <div class="bk-layout"><div class="bk-main">
-    <div class="legend" style="margin:4px 2px 14px"><span><i style="background:var(--green)"></i>Свободен</span><span><i style="background:var(--grey)"></i>Занят</span><span><i style="background:var(--amber)"></i>Бронь</span><span><i style="background:var(--blue)"></i>Ваш выбор</span></div>
+    <div class="legend" style="margin:4px 2px 14px"><span><i style="background:var(--green)"></i>Свободен</span><span><i style="background:var(--grey)"></i>Занят</span><span><i style="background:var(--amber)"></i>Забронирован на это время</span><span><i style="background:var(--blue)"></i>Ваш выбор</span></div>
     <div class="zones">
     ${ZONES.map(z => {
       const pr = z.price[C.isWeekend(start) ? 1 : 0];
