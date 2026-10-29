@@ -739,3 +739,10 @@ body.onboarding main.screen { padding-bottom: calc(var(--safe-bottom) + 24px); }
 .seg button { padding: 0 10px; }
 .switch { position: relative; }
 .switch::before { content: ''; position: absolute; inset: -8px; }
+
+.kpis .kpi-sub { display: block; font-style: normal; font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+.regs-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 4px 0 14px; }
+.regs-head h2 { font: 800 21px/1.2 var(--f-text); margin: 0; letter-spacing: -0.015em; }
+.regs-head span { display: block; color: var(--ink-3); font-size: 13.5px; margin-top: 4px; }
+.regs-head b { color: var(--ink); }
+.adm-tag { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 6px; background: var(--surface-3); color: var(--ink-3); font-size: 11px; font-weight: 600; vertical-align: 1px; }

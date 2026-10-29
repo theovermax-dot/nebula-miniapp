@@ -162,7 +162,13 @@ const fail = msg => { throw new UserError(msg); };
 // ---------- демо-данные ----------
 // Обновление демо-данных у тех, кто открыл старую версию
 export function migrate(db) {
-  if (!db || db.promoV === 4) return false;
+  if (!db) return false;
+  // починка демо-брони с неверной длительностью
+  let fixed = false;
+  for (const b of db.bookings || []) {
+    if (!(Number(b.hours) > 0)) { b.hours = 2; const q = quote(b.seats, b.start, 2); b.price = q.price; b.pkg = q.pkg; fixed = true; }
+  }
+  if (db.promoV === 4) return fixed;
   const fresh = seedDB().promos;
   for (const p of db.promos || []) {
     const f = fresh.find(x => x.id === p.id);
@@ -191,7 +197,7 @@ export function seedDB(now = Date.now()) {
   };
   const h = p.h + 1;
   mk([21, 22], at(0, Math.min(h + 2, 22)), 3, 'Георгий Беридзе', '+995 555 21 43 87', 'confirmed', 'giorgi_b');
-  mk([18], at(0, Math.min(h + 1, 22), 30), 'Лука', '+995 599 10 22 31', 'new', 'luka_aim');
+  mk([18], at(0, Math.min(h + 1, 22), 30), 2, 'Лука', '+995 599 10 22 31', 'new', 'luka_aim');
   mk([3, 4, 5], at(0, Math.min(h + 3, 23)), 2, 'Анна Соколова', '+995 571 66 04 19', 'new', 'annsok');
   mk([7], at(1, 10), 3, 'Саба Цинцадзе', '+995 593 48 70 12', 'confirmed', 'saba_ts');
   mk([16, 17], at(1, 19), 5, 'Дмитрий', '+995 557 31 90 08', 'confirmed', 'dimon_cs');
@@ -462,6 +468,18 @@ export const actions = {
   },
   toggleTournament(db, p, ctx) { needAdmin(ctx); const t = db.tournaments.find(x => x.id === p.id); if (!t) fail('Турнир не найден'); t.open = !t.open; return {}; },
   deleteTournament(db, p, ctx) { needAdmin(ctx); db.tournaments = db.tournaments.filter(x => x.id !== p.id); return {}; },
+  adminAddReg(db, p, ctx) {
+    needAdmin(ctx);
+    const t = db.tournaments.find(x => x.id === p.id);
+    if (!t) fail('Турнир не найден');
+    if (t.regs.length >= t.slots) fail('Все места заняты');
+    const team = clean(p.team, 40);
+    if (team.length < 2) fail(t.teamSize > 1 ? 'Введите название команды' : 'Введите никнейм');
+    if (t.regs.find(r => r.team.toLowerCase() === team.toLowerCase())) fail('Такое название уже есть в списке');
+    const players = (p.players || []).map(x => clean(x, 32)).filter(Boolean).slice(0, 6);
+    t.regs.push({ id: rid(), team, captain: clean(p.captain, 40), players, contact: clean(p.contact, 40), uid: 'admin', byAdmin: true, createdAt: ctx.now || Date.now() });
+    return {};
+  },
   awardWinner(db, p, ctx) {
     needAdmin(ctx);
     const t = db.tournaments.find(x => x.id === p.id);

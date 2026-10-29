@@ -44,11 +44,9 @@ export default async function handler(req, res) {
     } else if (text.startsWith('/id')) {
       await tg('sendMessage', { chat_id: chat, text: `ID этого чата: ${chat}\nВаш ID: ${msg.from?.id}` });
     } else if (text.startsWith('/start') || text.startsWith('/app')) {
-      await tg('sendMessage', {
-        chat_id: chat,
-        text: 'NEBULA Gaming, Батуми\n\nСвободные места в реальном времени, бронь за минуту, турниры и акции — всё внутри.',
-        reply_markup: openBtn,
-      });
+      const caption = 'Добро пожаловать в NEBULA Gaming!\n\nТвой игровой центр в Батуми — теперь в Telegram:\n🖥 свободные ПК в реальном времени\n📅 бронь места за минуту\n🏆 турниры с призами\n🎁 акции и бонусные часы\n\nЖми кнопку ниже 👇';
+      const r = await tg('sendPhoto', { chat_id: chat, photo: `${url}/assets/welcome.jpg`, caption, reply_markup: openBtn });
+      if (!r?.ok) await tg('sendMessage', { chat_id: chat, text: caption, reply_markup: openBtn });
     }
   } catch (e) { console.error(e); }
   send(res, 200, { ok: true });

@@ -27,7 +27,7 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
       <p class="sub">${C.fmtDayLong(now)} · <span class="mono">${fmtTime(now)}</span></p>
       <div class="kpis">
         <div><span>Свободно сейчас</span><b class="green">${free}<small>из 22</small></b></div>
-        <div><span>Брони сегодня</span><b>${today.length}<small>${money(today.reduce((a, b) => a + b.price, 0))}</small></b></div>
+        <div><span>Брони сегодня</span><b>${today.length}</b><em class="kpi-sub">на ${money(today.reduce((a, b) => a + b.price, 0))}</em></div>
         <div><span>Ждут подтверждения</span><b class="${pending.length ? 'amber' : ''}">${pending.length}</b></div>
         <div><span>Подписчики акций</span><b>${v.subCount}</b></div>
       </div>
@@ -177,8 +177,8 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span class="game"><i></i>${esc(t.game)} · ${esc(t.format)}</span><button class="switch ${t.open ? 'on' : ''}" role="switch" aria-checked="${t.open}" aria-label="Регистрация открыта" data-a="aTourToggle" data-id="${t.id}"></button></div>
         <h3 style="margin-bottom:6px">${esc(t.title)}</h3>
         <p class="dim" style="margin:0 0 14px;font-size:13.5px">${fmtDay(t.start)}, ${fmtTime(t.start)} · ₾${t.prize} призовой · ${t.entry ? `₾${t.entry} ${t.entryUnit}` : 'без взноса'} · регистрация ${t.open ? 'открыта' : 'закрыта'}</p>
-        <div class="slots"><div class="bar"><i style="width:${Math.min(100, t.regs.length / t.slots * 100)}%"></i></div><span><b style="color:var(--ink)">${t.regs.length}</b> из ${t.slots}</span></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-xs" data-a="aTourRegs" data-id="${t.id}">${icon('users', 15)}Участники</button><button class="btn btn-ghost btn-xs" data-a="aTourEdit" data-id="${t.id}">${icon('edit', 15)}Изменить</button><button class="btn btn-ghost btn-xs" data-a="aTourDel" data-id="${t.id}" aria-label="Удалить">${icon('trash', 15)}</button></div>
+        <div class="slots"><div class="bar"><i style="width:${Math.min(100, t.regs.length / t.slots * 100)}%"></i></div><span><b style="color:var(--ink)">${t.regs.length}</b> из ${t.slots} ${t.teamSize > 1 ? C.plural(t.slots, 'команды', 'команд', 'команд') : C.plural(t.slots, 'игрока', 'игроков', 'игроков')}</span></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-xs" data-a="aTourRegs" data-id="${t.id}">${icon('users', 15)}${t.teamSize > 1 ? 'Команды' : 'Игроки'}</button><button class="btn btn-ghost btn-xs" data-a="aTourEdit" data-id="${t.id}">${icon('edit', 15)}Изменить</button><button class="btn btn-ghost btn-xs" data-a="aTourDel" data-id="${t.id}" aria-label="Удалить">${icon('trash', 15)}</button></div>
       </div></article>`).join('') : `<div class="card empty"><b>Турниров пока нет</b>Создайте первый — гости увидят его во вкладке «Турниры».</div>`}`;
   }
   H.aTourToggle = async el => { try { await store.act('toggleTournament', { id: el.dataset.id }); haptic.tap(); } catch (e) { toast(e.message, 'err'); } };
@@ -186,19 +186,58 @@ export function initAdmin({ S, render, liveState, STATUS, zoneLabel }) {
     if (!(await confirmSheet({ title: 'Удалить турнир?', text: 'Турнир и все регистрации исчезнут без возможности восстановления.', ok: 'Удалить', danger: true }))) return;
     try { await store.act('deleteTournament', { id: el.dataset.id }); toast('Турнир удалён'); } catch (e) { toast(e.message, 'err'); }
   };
+  const unitWord = t => t.teamSize > 1 ? { one: 'команда', many: 'Команды', add: 'Добавить команду', name: 'Название команды', empty: 'Пока нет ни одной команды', rm: 'Убрать команду?' } : { one: 'игрок', many: 'Игроки', add: 'Добавить игрока', name: 'Никнейм', empty: 'Пока нет ни одного игрока', rm: 'Убрать игрока?' };
   H.aTourRegs = el => {
-    const t = store.view.tournamentsFull.find(x => x.id === el.dataset.id); if (!t) return;
-    const s = sheet({
-      title: `${t.title} · ${t.regs.length}/${t.slots}`,
-      body: t.regs.length ? `${t.prizeHours || t.prize || t.prizeComment ? `<div class="prize-sum">${icon('trophy', 16)}<span>${[t.prize ? '₾' + t.prize : '', t.prizeHours ? `+${t.prizeHours} ч на аккаунт` : '', t.prizeComment].filter(Boolean).map(esc).join(' · ')}</span></div>` : ''}` + t.regs.map((r, i) => `<div class="reg-row"><span class="dim mono" style="width:22px">${i + 1}.</span><span class="grow"><b>${esc(r.team)}</b>${r.winner ? ` <span class="win-tag">${icon('trophy', 12)}${r.winner.place} место${r.winner.hours ? ` · +${r.winner.hours} ч` : ''}</span>` : ''}<span class="s">${[r.captain, r.contact, r.players?.length ? r.players.join(', ') : ''].filter(Boolean).map(esc).join(' · ') || 'без контакта'}</span></span>${r.winner ? '' : `<button class="btn btn-ghost btn-xs" data-win="${r.id}">${icon('trophy', 14)}Наградить</button>`}<button class="icon-btn" data-rm="${r.id}" aria-label="Удалить участника">${icon('trash', 18)}</button></div>`).join('')
-        : '<div class="empty"><b>Пока никто не записался</b>Поделитесь турниром в Instagram и TikTok клуба.</div>',
-    });
+    const id = el.dataset.id;
+    const t = () => store.view.tournamentsFull.find(x => x.id === id);
+    if (!t()) return;
+    const s = sheet({ title: '', body: '', full: true });
+    const draw = () => {
+      const T = t(), W = unitWord(T), full = T.regs.length >= T.slots;
+      s.body.innerHTML = `
+        <div class="regs-head">
+          <div><h2>${esc(T.title)}</h2><span>${W.many}: <b>${T.regs.length}</b> из ${T.slots} · ${esc(T.format)}</span></div>
+          <button class="icon-btn" data-close aria-label="Закрыть">${icon('close', 20)}</button>
+        </div>
+        ${T.prizeHours || T.prize || T.prizeComment ? `<div class="prize-sum">${icon('trophy', 16)}<span>${[T.prize ? '₾' + T.prize : '', T.prizeHours ? `+${T.prizeHours} ч на аккаунт` : '', T.prizeComment].filter(Boolean).map(esc).join(' · ')}</span></div>` : ''}
+        <button class="btn btn-ghost" data-add ${full ? 'disabled' : ''} style="margin-bottom:6px">${icon('plus', 17)}${full ? 'Все места заняты' : W.add}</button>
+        ${T.regs.length ? T.regs.map((r, i) => `<div class="reg-row"><span class="dim mono" style="width:22px">${i + 1}.</span><span class="grow"><b>${esc(r.team)}</b>${r.winner ? ` <span class="win-tag">${icon('trophy', 12)}${r.winner.place} место${r.winner.hours ? ` · +${r.winner.hours} ч` : ''}</span>` : ''}${r.byAdmin ? ' <span class="adm-tag">добавил админ</span>' : ''}<span class="s">${[T.teamSize > 1 && r.players?.length ? 'Состав: ' + r.players.join(', ') : '', r.captain, r.contact].filter(Boolean).map(esc).join(' · ') || 'без контакта'}</span></span>${r.winner ? '' : `<button class="btn btn-ghost btn-xs" data-win="${r.id}">${icon('trophy', 14)}Наградить</button>`}<button class="icon-btn" data-rm="${r.id}" aria-label="Убрать">${icon('trash', 18)}</button></div>`).join('')
+          : `<div class="empty"><b>${W.empty}</b>Добавьте вручную или поделитесь турниром в Instagram и TikTok клуба.</div>`}`;
+    };
+    draw();
+    const off = store.on(() => { if (!s.closed && t()) draw(); });
+    const close0 = s.close; s.close = () => { off(); close0(); };
     s.body.addEventListener('click', async e => {
+      if (e.target.closest('[data-add]')) return addRegSheet(t());
       const w = e.target.closest('[data-win]');
-      if (w) return awardSheet(t, t.regs.find(r => r.id === w.dataset.win), s);
+      if (w) return awardSheet(t(), t().regs.find(r => r.id === w.dataset.win), s);
       const rm = e.target.closest('[data-rm]'); if (!rm) return;
-      if (!(await confirmSheet({ title: 'Убрать участника?', text: 'Его место станет свободным.', ok: 'Убрать', danger: true }))) return;
-      try { await store.act('removeReg', { id: t.id, regId: rm.dataset.rm }); rm.closest('.reg-row').remove(); toast('Участник удалён'); } catch (err) { toast(err.message, 'err'); }
+      if (!(await confirmSheet({ title: unitWord(t()).rm, text: 'Место станет свободным.', ok: 'Убрать', danger: true }))) return;
+      try { await store.act('removeReg', { id, regId: rm.dataset.rm }); toast('Убрано'); } catch (err) { toast(err.message, 'err'); }
+    });
+  };
+  function addRegSheet(T) {
+    const W = unitWord(T), team = T.teamSize > 1;
+    const a = sheet({
+      title: W.add,
+      body: `<form id="arForm" novalidate>
+        <label class="field"><span>${W.name}</span><input name="team" maxlength="40" placeholder="${team ? 'Например, Batumi Five' : 'Ник в игре'}"></label>
+        ${team ? `<label class="field"><span>Игроки <span class="dim" style="font-weight:500">— до ${T.teamSize}, через запятую</span></span><input name="players" placeholder="Ники игроков"></label>
+        <label class="field"><span>Капитан</span><input name="captain" placeholder="Ник или @username"></label>` : ''}
+        <label class="field"><span>Контакт <span class="dim" style="font-weight:500">— необязательно</span></span><input name="contact" placeholder="Телефон или @username"></label>
+        <button class="btn" type="submit" data-a="aAddReg" data-id="${T.id}">${icon('plus', 17)}${W.add}</button>
+      </form>`,
+    });
+    setTimeout(() => a.body.querySelector('[name=team]')?.focus(), 400);
+  }
+  H.aAddReg = async (el, e) => {
+    e?.preventDefault();
+    const f = Object.fromEntries(new FormData($('#arForm')));
+    await busy(el, async () => {
+      try {
+        await store.act('adminAddReg', { id: el.dataset.id, team: f.team, captain: f.captain, contact: f.contact, players: (f.players || '').split(',') });
+        haptic.ok(); $('#arForm').closest('.sheet-root').querySelector('[data-close]')?.click(); toast('Добавлено', 'ok');
+      } catch (err) { toast(err.message, 'err'); }
     });
   };
   function awardSheet(t, r, parent) {
