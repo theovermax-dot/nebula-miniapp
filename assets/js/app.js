@@ -626,7 +626,7 @@ H.sub = async el => {
   const on = !store.view.subscribed;
   el.classList.toggle('on', on);
   if (on) await requestWrite();
-  try { await store.act('subscribe', { on }); haptic.ok(); toast(on ? 'Готово — пришлём, как только будет новая акция' : 'Уведомления выключены', on ? 'ok' : 'info'); render(); }
+  try { await store.act('subscribe', { on }); haptic.ok(); toast(on ? 'Подписка включена: новые акции придут в Telegram' : 'Уведомления об акциях выключены', on ? 'ok' : 'info'); render(); }
   catch (err) { el.classList.toggle('on', !on); toast(err.message, 'err'); }
 };
 

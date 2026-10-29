@@ -53,7 +53,7 @@ export function toast(msg, kind = 'info') {
   el.innerHTML = `${kind === 'ok' ? icon('check', 18) : kind === 'err' ? icon('close', 18) : icon('bell', 18)}<span>${esc(msg)}</span>`;
   requestAnimationFrame(() => el.classList.add('show'));
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), kind === 'err' ? 3600 : 2600);
+  toastTimer = setTimeout(() => el.classList.remove('show'), Math.max(kind === 'err' ? 3600 : 2600, String(msg).length * 60));
   if (kind === 'err') haptic.err();
 }
 

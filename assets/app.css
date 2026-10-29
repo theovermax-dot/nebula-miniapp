@@ -420,7 +420,7 @@ button.rowi:active, a.rowi:active { background: var(--surface-2); }
 /* ---------- тост ---------- */
 .toast {
   position: fixed; z-index: 200; left: 50%; top: calc(var(--safe-top) + 14px); transform: translate(-50%, calc(-100% - var(--safe-top) - 40px)); opacity: 0; visibility: hidden; pointer-events: none;
-  width: max-content; max-width: calc(100vw - 32px); display: flex; white-space: nowrap; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 14px;
+  width: max-content; max-width: calc(100vw - 32px); display: flex; white-space: normal; line-height: 1.4; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 14px;
   background: var(--surface-3); border: 1px solid var(--line-2); color: var(--ink); font-size: 14px; font-weight: 500;
   box-shadow: 0 12px 40px rgba(0, 0, 0, .45); transition: transform .45s var(--ease), opacity .3s, visibility 0s .45s;
 }
@@ -577,7 +577,8 @@ body.onboarding main.screen { padding-bottom: calc(var(--safe-bottom) + 24px); }
 .policy b { color: var(--ink); font-weight: 600; }
 .policy-page { padding-bottom: 48px !important; }
 
-.toast span { overflow: hidden; text-overflow: ellipsis; }
+.toast span { overflow-wrap: anywhere; }
+.toast .ic { align-self: flex-start; margin-top: 1px; }
 
 /* ---------- сводка брони ---------- */
 .bk-aside { display: none; }
