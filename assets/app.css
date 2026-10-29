@@ -1,9 +1,4 @@
 /* NEBULA Gaming — Telegram Mini App. Токены повторяют сайт клуба: глубокий космический чёрный, электрический синий, неоновый зелёный для свободных мест. */
-/* Шрифты самохостинг (OFL): Onest — текст, Unbounded — цифры и места, JetBrains Mono — время */
-@font-face { font-family: 'Onest'; src: url('/assets/fonts/onest.woff') format('woff'); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: 'Unbounded'; src: url('/assets/fonts/unbounded.woff') format('woff'); font-weight: 200 900; font-display: swap; }
-@font-face { font-family: 'JetBrains Mono'; src: url('/assets/fonts/jetbrains-mono.woff') format('woff'); font-weight: 100 800; font-display: swap; }
-
 :root {
   --bg: #05050f;
   --surface: #0b0b1d;
