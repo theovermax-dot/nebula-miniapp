@@ -1,8 +1,8 @@
 // Админ-панель: зал в реальном времени, брони, турниры, акции и рассылка.
-import * as C from './core.js';
-import { store } from './store.js';
-import { haptic } from './tg.js';
-import { esc, $, icon, toast, sheet, confirmSheet, busy, money, closeAllSheets } from './ui.js';
+import * as C from './core.js?v=1793299780';
+import { store } from './store.js?v=1793299780';
+import { haptic } from './tg.js?v=1793299780';
+import { esc, $, icon, toast, sheet, confirmSheet, busy, money, closeAllSheets } from './ui.js?v=1793299780';
 
 const { ZONES, ALL_SEATS, PACKAGES, fmtTime, fmtDay, relDay, pad, clubParts, dayStart } = C;
 

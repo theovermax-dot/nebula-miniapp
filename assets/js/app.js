@@ -1,9 +1,9 @@
-import * as C from './core.js';
-import { store } from './store.js';
-import { tg, tgUser, initTelegram, haptic, setBack, openLink, requestWrite } from './tg.js';
-import { esc, $, $$, icon, toast, sheet, confirmSheet, countUp, busy, money, closeAllSheets, topSheet } from './ui.js';
-import { initAdmin } from './admin.js';
-import { initOnboarding, avatarHTML } from './onboarding.js';
+import * as C from './core.js?v=1793299780';
+import { store } from './store.js?v=1793299780';
+import { tg, tgUser, initTelegram, haptic, setBack, openLink, requestWrite } from './tg.js?v=1793299780';
+import { esc, $, $$, icon, toast, sheet, confirmSheet, countUp, busy, money, closeAllSheets, topSheet } from './ui.js?v=1793299780';
+import { initAdmin } from './admin.js?v=1793299780';
+import { initOnboarding, avatarHTML } from './onboarding.js?v=1793299780';
 
 const { ZONES, PACKAGES, ALL_SEATS, CLUB, fmtTime, fmtDay, relDay, pad, clubParts, dayStart } = C;
 const LS = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* */ } } };

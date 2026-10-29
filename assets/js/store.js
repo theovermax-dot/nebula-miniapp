@@ -1,6 +1,6 @@
 // Слой данных: сервер (Vercel + Redis), если он подключён, иначе демо-режим в браузере.
-import { seedDB, publicView, runAction, demoTick, migrate } from './core.js';
-import { tg, tgUser, cloudGet, cloudSet, cloudRemove } from './tg.js';
+import { seedDB, publicView, runAction, demoTick, migrate } from './core.js?v=1793299780';
+import { tg, tgUser, cloudGet, cloudSet, cloudRemove } from './tg.js?v=1793299780';
 
 const LS_DB = 'nebula:db:v1';
 const LS_UID = 'nebula:uid';
