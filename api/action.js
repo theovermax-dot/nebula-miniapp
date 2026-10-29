@@ -1,6 +1,7 @@
-import { runAction, publicView, notifyText } from '../assets/js/core.js';
+import { runAction, publicView, notifyText, clientText } from '../assets/js/core.js';
 import { loadDB, saveDB, context, hasStorage, send, tg, verifyContact, signSession, getAvatar, setAvatar } from './_lib.js';
 
+const openBtn = req => ({ inline_keyboard: [[{ text: '🎮 Мои брони', web_app: { url: process.env.WEBAPP_URL || `https://${req.headers.host}` } }]] });
 const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || '';
 
 export default async function handler(req, res) {
@@ -32,6 +33,10 @@ export default async function handler(req, res) {
     if (result.notify && ADMIN_CHAT_ID && result.notify !== 'broadcast') {
       const text = notifyText(result.notify, result, db);
       if (text) await tg('sendMessage', { chat_id: ADMIN_CHAT_ID, text });
+    }
+    // клиенту — бронь в чат бота
+    if (result.notify === 'booking' && result.booking?.uid?.startsWith('tg-')) {
+      await tg('sendMessage', { chat_id: result.booking.uid.slice(3), text: clientText('created', result.booking), reply_markup: openBtn(req) });
     }
     // клиенту — подтверждение статуса брони
     if (result.notify === 'status' && result.booking?.uid?.startsWith('tg-')) {

@@ -1,0 +1,11 @@
+name: Напоминания о бронях
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: curl -fsS --max-time 60 https://nebula-gaming.vercel.app/api/remind

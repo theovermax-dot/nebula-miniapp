@@ -747,3 +747,6 @@ body.onboarding main.screen { padding-bottom: calc(var(--safe-bottom) + 24px); }
 .regs-head span { display: block; color: var(--ink-3); font-size: 13.5px; margin-top: 4px; }
 .regs-head b { color: var(--ink); }
 .adm-tag { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 6px; background: var(--surface-3); color: var(--ink-3); font-size: 11px; font-weight: 600; vertical-align: 1px; }
+.home-bk { margin: 0 0 16px; }
+.home-bk .sec-head { margin-bottom: 10px; }
+.opt-p s { margin-right: 6px; font: 500 12.5px var(--f-text); color: var(--ink-3); }

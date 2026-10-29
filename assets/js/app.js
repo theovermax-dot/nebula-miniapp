@@ -167,7 +167,9 @@ function go(tab) { S.tab = tab; haptic.tap(); render(); }
 function home(v) {
   const free = freeCount(v);
   const fromP = Math.min(...ZONES.map(z => z.price[0]));
+  const up = (v.myBookings || []).filter(b => ['new', 'confirmed', 'arrived'].includes(b.status) && b.start + b.hours * 3600e3 > v.now).sort((a, b) => a.start - b.start);
   return `<div class="cols"><div class="col">
+  ${up.length ? `<section class="sec home-bk"><div class="sec-head"><h2 class="h2">${up.length > 1 ? 'Ваши брони' : 'Ваша бронь'}</h2>${up.length > 1 ? `<button class="link-btn" data-a="go" data-tab="me">Все ${up.length}${icon('chevron', 16)}</button>` : ''}</div>${bookingCard(up[0])}</section>` : ''}
   <section class="hero" aria-label="Свободные места сейчас">
     <div class="hero-top">
       <div>
@@ -406,38 +408,34 @@ H.usePkg = el => {
   S.tab = 'book'; haptic.tap(); render();
 };
 // варианты тарифа для выбранных мест и времени начала
-function tariffOptions(seats) {
-  const start = bkStart(), p = clubParts(start), sm = p.h * 60 + p.min;
-  const iv = store.view.occupied;
+function tariffOptions(seats, base) {
+  // список не зависит от выбранного варианта: часы из шага «Когда» + подходящие пакеты, по возрастанию
+  const start = bkStart(), iv = store.view.occupied;
   const fits = h => seats.every(s => !C.seatConflict(iv, s, start, start + h * 3600e3));
-  const opts = [];
-  const cur = C.quote(seats, start, S.bk.hours);
-  opts.push({ hours: S.bk.hours, title: `${S.bk.hours} ${C.plural(S.bk.hours, 'час', 'часа', 'часов')}`, sub: cur.pkg ? `по ${pkgLabel(PACKAGES.find(x => x.id === cur.pkg)).replace('пакет', 'пакету')}` : 'по часам', price: cur.price, old: cur.saving > 0 ? cur.hourly : 0 });
-  for (const pk of PACKAGES) {
-    if (pk.hours === S.bk.hours || !pk.fits(sm, pk.hours) || !fits(pk.hours)) continue;
-    const q = C.quote(seats, start, pk.hours);
-    if (q.pkg !== pk.id) continue;
-    opts.push({ hours: pk.hours, title: { p3: 'Пакет 3 часа', p5: 'Пакет 5 часов', morning: 'Утро до 13:00', night: 'Ночь до 09:00' }[pk.id], sub: `${pk.hours} ч · вместо ${money(q.hourly)}`, price: q.price });
-  }
-  return opts;
+  const hrs = new Set([base]);
+  for (const pk of PACKAGES) if (pk.hours !== base && fits(pk.hours) && C.quote(seats, start, pk.hours).pkg === pk.id) hrs.add(pk.hours);
+  return [...hrs].sort((a, b) => a - b).map(h => {
+    const q = C.quote(seats, start, h), pk = q.pkg && PACKAGES.find(x => x.id === q.pkg);
+    return { hours: h, title: `${h} ${C.plural(h, 'час', 'часа', 'часов')} · ${fmtTime(start)}–${fmtTime(start + h * 3600e3)}`, sub: pk ? `${pk.name} · выгода ${money(q.hourly - q.price)}` : 'Почасовой тариф', price: q.price, old: q.saving > 0 ? q.hourly : 0 };
+  });
 }
 H.bkNext = () => {
   const v = store.view;
-  const st = { promo: '', bonus: (v.profile?.bonusHours || 0) > 0 };
+  const st = { promo: '', bonus: (v.profile?.bonusHours || 0) > 0, base: S.bk.hours };
   haptic.light();
   const s = sheet({ title: 'Подтверждение', body: '' });
   const draw = () => {
     const seats = [...S.bk.seats].sort((a, b) => a - b);
     const q = C.quote(seats, bkStart(), S.bk.hours);
     const zones = [...new Set(seats.map(x => zoneLabel(C.zoneOf(x))))].join(', ');
-    const opts = tariffOptions(seats);
+    const opts = tariffOptions(seats, st.base);
     s.body.innerHTML = `
       <div class="summary">
         <div class="li"><span>${seats.length > 1 ? 'Места' : 'Место'}</span><span>${seats.join(', ')} · ${zones}</span></div>
         <div class="li"><span>Когда</span><span>${relDay(bkStart())}, ${fmtTime(bkStart())}–${fmtTime(bkEnd())}</span></div>
       </div>
       ${opts.length > 1 ? `<h3 class="cf-t">Тариф</h3>
-      <div class="opts" role="radiogroup" aria-label="Тариф">${opts.map(o => `<button type="button" class="opt ${o.hours === S.bk.hours ? 'on' : ''}" data-hours="${o.hours}" role="radio" aria-checked="${o.hours === S.bk.hours}"><span class="radio"></span><span class="grow"><b>${o.title}</b><span>${o.sub}</span></span><span class="opt-p">${money(o.price)}</span></button>`).join('')}</div>` : ''}
+      <div class="opts" role="radiogroup" aria-label="Тариф">${opts.map(o => `<button type="button" class="opt ${o.hours === S.bk.hours ? 'on' : ''}" data-hours="${o.hours}" role="radio" aria-checked="${o.hours === S.bk.hours}"><span class="radio"></span><span class="grow"><b>${o.title}</b><span>${o.sub}</span></span><span class="opt-p">${o.old ? `<s>${money(o.old)}</s>` : ''}${money(o.price)}</span></button>`).join('')}</div>` : ''}
       ${v.promos.length ? `<h3 class="cf-t">Акция</h3>
       <div class="promo-chips">${['', ...v.promos.map(p => p.title)].map(t => `<button type="button" class="chip ${st.promo === t ? 'on' : ''}" data-promo="${esc(t)}">${t ? esc(t) : 'Без акции'}</button>`).join('')}</div>
       ${st.promo ? (() => { const pr = v.promos.find(p => p.title === st.promo); return `<div class="cf-promo">${pr?.badge ? `<span class="cf-badge">${esc(pr.badge)}</span>` : ''}<p>${esc(pr?.text || '')}</p><small>${icon('check', 13)}Скидку учтём при оплате в клубе</small></div>`; })() : ''}` : ''}

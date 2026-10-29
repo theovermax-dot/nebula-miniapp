@@ -551,6 +551,21 @@ export function runAction(db, name, payload, ctx) {
   return res;
 }
 
+// Сообщения клиенту в чат бота
+const bkLine = b => `${b.seats.length > 1 ? 'Места' : 'Место'} ${b.seats.join(', ')} · ${[...new Set(b.seats.map(s => zoneOf(s).short || zoneOf(s).name))].join(', ')}\n${relDay(b.start)}, ${fmtTime(b.start)}–${fmtTime(b.start + b.hours * 3600e3)}`;
+export function clientText(kind, b) {
+  if (kind === 'created') return `🎮 Бронь ${b.code} принята\n\n${bkLine(b)}\nК оплате в клубе: ₾${b.price}\n\nАдминистратор подтвердит бронь, ответ придёт сюда. За час до начала напомню.`;
+  if (kind === 'remind') return `⏰ Скоро ваша бронь ${b.code}\n\n${bkLine(b)}\n\nМесто держим 15 минут после начала. Если планы изменились, отмените бронь в приложении.`;
+  return '';
+}
+// Брони, о которых пора напомнить: начало через 75 минут или меньше, бронь сделана заранее
+export function dueReminders(db, now = Date.now()) {
+  const due = db.bookings.filter(b => !b.reminded && ['new', 'confirmed'].includes(b.status) && String(b.uid).startsWith('tg-')
+    && b.start > now && b.start - now <= 75 * 60e3 && b.start - (b.createdAt || 0) > 100 * 60e3);
+  due.forEach(b => { b.reminded = now; });
+  return due;
+}
+
 // Текст уведомлений для бота
 export function notifyText(kind, res, db) {
   if (kind === 'booking') {
